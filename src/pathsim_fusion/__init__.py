@@ -1,5 +1,5 @@
 """
-PathSim-Toolbox: A toolbox for PathSim
+PathSim-Fusion: Fusion fuel cycle and balance-of-plant blocks for PathSim
 
 Specialized simulation blocks for the PathSim framework. All blocks follow
 the standard PathSim block interface and can be connected into simulation

@@ -5,7 +5,7 @@ from pathsim import Connection, Simulation
 from pathsim.blocks import Constant
 from pathsim.solvers import SSPRK22
 
-from pathsim_toolbox import FirstOrderLag
+from pathsim_fusion import FirstOrderLag
 
 
 class TestFirstOrderLagInit(unittest.TestCase):

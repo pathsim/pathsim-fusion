@@ -3,9 +3,9 @@ requires = ["setuptools>=64", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pathsim-toolbox"
+name = "pathsim-fusion"
 dynamic = ["version"]
-description = "A toolbox for PathSim"
+description = "Fusion fuel cycle and balance-of-plant blocks for PathSim"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -48,9 +48,9 @@ test = [
 
 [project.urls]
 Homepage = "https://pathsim.org"
-Documentation = "https://docs.pathsim.org/toolbox"
-Repository = "https://github.com/pathsim/pathsim-toolbox"
-Issues = "https://github.com/pathsim/pathsim-toolbox/issues"
+Documentation = "https://docs.pathsim.org/fusion"
+Repository = "https://github.com/pathsim/pathsim-fusion"
+Issues = "https://github.com/pathsim/pathsim-fusion/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -59,10 +59,10 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools_scm]
-write_to = "src/pathsim_toolbox/_version.py"
+write_to = "src/pathsim_fusion/_version.py"
 
 [tool.mypy]
-files = ["src/pathsim_toolbox"]
+files = ["src/pathsim_fusion"]
 python_version = "3.10"
 ignore_missing_imports = true
 warn_unused_ignores = true
