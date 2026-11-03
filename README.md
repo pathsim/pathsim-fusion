@@ -41,8 +41,8 @@ from pathsim import Simulation, Connection
 from pathsim.blocks import Source, Scope
 from pathsim_fusion import FirstOrderLag
 
-src = Source(lambda t: float(t > 1))   # unit step at t = 1
-lag = FirstOrderLag(tau=2.0)           # first-order lag
+src = Source(lambda t: float(t > 1))  # unit step at t = 1
+lag = FirstOrderLag(tau=2.0)  # first-order lag
 sco = Scope(labels=["input", "output"])
 
 sim = Simulation(
