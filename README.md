@@ -60,7 +60,9 @@ sco.plot()
 ## Development
 
 ```bash
-pip install -e ".[test]" mypy
+pip install -e ".[test,lint]" mypy
+ruff check .                # lint
+ruff format .               # format
 mypy src/pathsim_fusion    # type check
 pytest tests/ -v            # run tests
 ```
