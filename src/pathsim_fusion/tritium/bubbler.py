@@ -6,13 +6,11 @@
 
 # IMPORTS ===============================================================================
 
-import numpy as np
 from typing import ClassVar
 
+import numpy as np
 from pathsim.blocks.dynsys import DynamicalSystem
 from pathsim.events.schedule import ScheduleList
-from pathsim.utils.register import Register
-
 
 # BLOCK DEFIINITIONS ====================================================================
 
