@@ -9,11 +9,12 @@ mesh between evaluations and skips the re-solve when the boundary data is
 unchanged.
 """
 
-import numpy as np
-from scipy.optimize import root_scalar
-import scipy.constants as const
+from typing import ClassVar
 
+import numpy as np
+import scipy.constants as const
 from pathsim.blocks import BVP1D
+from scipy.optimize import root_scalar
 
 # --- Physical Constants ---
 g = const.g  # m/s^2, Gravitational acceleration
@@ -367,13 +368,13 @@ class GLC(BVP1D):
         10000.
     """
 
-    input_port_labels = {
+    input_port_labels: ClassVar[dict[str, int]] = {
         "c_T_in": 0,
         "flow_l": 1,
         "y_T2_inlet": 2,
         "flow_g": 3,
     }
-    output_port_labels = {
+    output_port_labels: ClassVar[dict[str, int]] = {
         "c_T_out": 0,
         "y_T2_out": 1,
         "eff": 2,
