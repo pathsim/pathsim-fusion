@@ -14,6 +14,7 @@ from pathsim_fusion.tritium import IonisationChamber
 
 # TESTS ================================================================================
 
+
 class TestIonisationChamber(unittest.TestCase):
     """Test the IonisationChamber block."""
 
@@ -56,7 +57,7 @@ class TestIonisationChamber(unittest.TestCase):
         """Sample flux passes through unchanged."""
         ic = IonisationChamber(detection_efficiency=0.5)
         ic.inputs[0] = 100.0  # flux_in
-        ic.inputs[1] = 10.0   # flow_rate
+        ic.inputs[1] = 10.0  # flow_rate
         ic.update(None)
 
         self.assertAlmostEqual(ic.outputs[0], 100.0)
@@ -65,7 +66,7 @@ class TestIonisationChamber(unittest.TestCase):
         """Signal = efficiency * concentration."""
         ic = IonisationChamber(detection_efficiency=0.8)
         ic.inputs[0] = 200.0  # flux_in
-        ic.inputs[1] = 10.0   # flow_rate -> concentration = 20
+        ic.inputs[1] = 10.0  # flow_rate -> concentration = 20
         ic.update(None)
 
         self.assertAlmostEqual(ic.outputs[1], 0.8 * 20.0)
@@ -74,7 +75,7 @@ class TestIonisationChamber(unittest.TestCase):
         """Above threshold, signal = concentration."""
         ic = IonisationChamber(detection_threshold=5.0)
         ic.inputs[0] = 100.0  # flux
-        ic.inputs[1] = 10.0   # flow -> concentration = 10 > 5
+        ic.inputs[1] = 10.0  # flow -> concentration = 10 > 5
         ic.update(None)
 
         self.assertAlmostEqual(ic.outputs[1], 10.0)
@@ -83,7 +84,7 @@ class TestIonisationChamber(unittest.TestCase):
         """Below threshold, signal = 0."""
         ic = IonisationChamber(detection_threshold=50.0)
         ic.inputs[0] = 100.0  # flux
-        ic.inputs[1] = 10.0   # flow -> concentration = 10 < 50
+        ic.inputs[1] = 10.0  # flow -> concentration = 10 < 50
         ic.update(None)
 
         self.assertAlmostEqual(ic.outputs[1], 0.0)
@@ -94,7 +95,7 @@ class TestIonisationChamber(unittest.TestCase):
         eff = lambda c: min(c / 100.0, 1.0)
         ic = IonisationChamber(detection_efficiency=eff)
         ic.inputs[0] = 500.0  # flux
-        ic.inputs[1] = 10.0   # flow -> concentration = 50
+        ic.inputs[1] = 10.0  # flow -> concentration = 50
         ic.update(None)
 
         # efficiency(50) = 0.5, signal = 0.5 * 50 = 25
@@ -113,5 +114,5 @@ class TestIonisationChamber(unittest.TestCase):
 
 # RUN TESTS LOCALLY ====================================================================
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -10,6 +10,7 @@ from pathsim.blocks.function import Function
 
 # BLOCKS ================================================================================
 
+
 class IonisationChamber(Function):
     """Ionisation chamber for tritium detection.
 
@@ -49,13 +50,13 @@ class IonisationChamber(Function):
     """
 
     input_port_labels = {
-        "flux_in":   0,
+        "flux_in": 0,
         "flow_rate": 1,
     }
 
     output_port_labels = {
         "flux_out": 0,
-        "signal":   1,
+        "signal": 1,
     }
 
     def __init__(self, detection_efficiency=None, detection_threshold=None):
@@ -71,7 +72,9 @@ class IonisationChamber(Function):
             )
 
         if detection_threshold is not None:
-            self.detection_efficiency = lambda c: 1.0 if c >= detection_threshold else 0.0
+            self.detection_efficiency = lambda c: (
+                1.0 if c >= detection_threshold else 0.0
+            )
         else:
             self.detection_efficiency = detection_efficiency
 

@@ -372,7 +372,7 @@ class GLC(BVP1D):
         "flow_l": 1,
         "y_T2_inlet": 2,
         "flow_g": 3,
-        }
+    }
     output_port_labels = {
         "c_T_out": 0,
         "y_T2_out": 1,
@@ -382,7 +382,7 @@ class GLC(BVP1D):
         "Q_g_out": 5,
         "n_T_out_liquid": 6,
         "n_T_out_gas": 7,
-        }
+    }
 
     def __init__(
         self,
@@ -396,8 +396,8 @@ class GLC(BVP1D):
         tol=1e-5,
         max_nodes=10000,
     ):
-        #fixed operating point and geometry; the four block inputs supply the
-        #per-evaluation boundary data (c_T_in, flow_l, y_T2_inlet, flow_g)
+        # fixed operating point and geometry; the four block inputs supply the
+        # per-evaluation boundary data (c_T_in, flow_l, y_T2_inlet, flow_g)
         self.params = {
             "P_in": P_in,
             "L": L,
@@ -409,15 +409,15 @@ class GLC(BVP1D):
         }
         self.BCs = BCs
 
-        #cache of (physical properties, dimensionless groups) keyed on the input
-        #so the hydrodynamic correlations run once per operating point instead of
-        #on every collocation mesh point
+        # cache of (physical properties, dimensionless groups) keyed on the input
+        # so the hydrodynamic correlations run once per operating point instead of
+        # on every collocation mesh point
         self._u_cache = None
         self._phys = None
         self._dim = None
 
-        #seed the native BVP block with the Malara model physics; sample the two
-        #domain endpoints so the dimensionless outlet/inlet states are available
+        # seed the native BVP block with the Malara model physics; sample the two
+        # domain endpoints so the dimensionless outlet/inlet states are available
         super().__init__(
             fun=self._ode,
             bc=self._bc,
@@ -448,7 +448,7 @@ class GLC(BVP1D):
 
         phys = _calculate_properties(p)
 
-        #guard against a non-physical (non-positive) gas outlet pressure
+        # guard against a non-physical (non-positive) gas outlet pressure
         P_out = p["P_in"] - phys["rho_l"] * (1 - phys["epsilon_g"]) * g * p["L"]
         if P_out <= 0:
             raise ValueError(
@@ -495,16 +495,20 @@ class GLC(BVP1D):
             raise RuntimeError("BVP solver failed to converge.")
 
         res = self.results()
-        self.outputs.update_from_array(np.array([
-            res["c_T_outlet [mol/m^3]"],
-            res["y_T2_outlet_gas"],
-            res["extraction_efficiency [fraction]"],
-            res["total_gas_P_outlet [Pa]"],
-            res["liquid_vol_flow [m^3/s]"],
-            res["gas_vol_flow_outlet [m^3/s]"],
-            res["tritium_out_liquid [mol/s]"],
-            res["tritium_out_gas [mol/s]"],
-        ]))
+        self.outputs.update_from_array(
+            np.array(
+                [
+                    res["c_T_outlet [mol/m^3]"],
+                    res["y_T2_outlet_gas"],
+                    res["extraction_efficiency [fraction]"],
+                    res["total_gas_P_outlet [Pa]"],
+                    res["liquid_vol_flow [m^3/s]"],
+                    res["gas_vol_flow_outlet [m^3/s]"],
+                    res["tritium_out_liquid [mol/s]"],
+                    res["tritium_out_gas [mol/s]"],
+                ]
+            )
+        )
 
     def results(self):
         """Post-process the current BVP solution into dimensional results.
