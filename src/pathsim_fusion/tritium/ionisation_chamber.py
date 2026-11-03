@@ -2,20 +2,16 @@
 ##
 ##                            Ionisation Chamber Block
 ##
-##        Moved from pathsim-chem (src/pathsim_chem/tritium/ionisation_chamber.py)
-##
 #########################################################################################
 
 # IMPORTS ===============================================================================
-
-import warnings
 
 from pathsim.blocks.function import Function
 
 # BLOCKS ================================================================================
 
 class IonisationChamber(Function):
-    """Flow-through ionisation chamber for tritium detection.
+    """Ionisation chamber for tritium detection.
 
     Algebraic block that models a flow-through ionisation chamber. The sample
     passes through unchanged while the chamber produces a signal proportional
@@ -38,42 +34,18 @@ class IonisationChamber(Function):
 
         \\Phi_{out} = \\Phi_{in}
 
-    The efficiency is the constant ``detection_efficiency``, or
-    ``func_efficiency(c)`` if given. An optional ``detection_threshold``
-    :math:`c_{min}` acts as a detection limit:
-
-    .. math::
-
-        \\varepsilon(c) =
-        \\begin{cases}
-        \\varepsilon_0 \\text{ or } f(c) & , c \\geq c_{min} \\\\
-        0                               & , c < c_{min}
-        \\end{cases}
-
-    For a non-positive flow rate the concentration is taken as zero.
+    where :math:`\\varepsilon` is the detection efficiency (constant or
+    concentration-dependent).
 
     Parameters
     ----------
-    detection_efficiency : float
-        Constant detection efficiency [-]. Must be non-negative. Unused if
-        ``func_efficiency`` is given. Default 1.0.
-    detection_threshold : float, None
-        Detection limit on the concentration, in the units of
-        ``flux_in / flow_rate``. Below it the signal is zero. Must be
-        non-negative. Default None (no threshold).
-    func_efficiency : callable, None
-        Concentration-dependent efficiency ``f(c) -> float``. Replaces
-        ``detection_efficiency`` when given. Default None.
-
-    Inputs
-    ------
-    flux_in (0) : tritium flux into the chamber [e.g. Bq/s or mol/s]
-    flow_rate (1) : volumetric flow rate through the chamber [m³/s]
-
-    Outputs
-    -------
-    flux_out (0) : tritium flux out of the chamber, equal to ``flux_in``
-    signal (1) : chamber signal, efficiency times concentration
+    detection_efficiency : float or callable, optional
+        Constant efficiency factor or a function ``f(c) -> float`` that
+        returns the efficiency for a given concentration. Mutually
+        exclusive with *detection_threshold*.
+    detection_threshold : float, optional
+        If provided, the efficiency is a step function: 1 above the
+        threshold, 0 below. Mutually exclusive with *detection_efficiency*.
     """
 
     input_port_labels = {
@@ -86,62 +58,34 @@ class IonisationChamber(Function):
         "signal":   1,
     }
 
-    def __init__(self, detection_efficiency=1.0, detection_threshold=None,
-                 func_efficiency=None):
-
-        # backwards compatibility: pathsim-chem accepted a callable here
-        if callable(detection_efficiency):
-            if func_efficiency is not None:
-                raise ValueError(
-                    "Pass the efficiency function as 'func_efficiency' only, "
-                    "not also as 'detection_efficiency'"
-                )
-            warnings.warn(
-                "Passing a callable as 'detection_efficiency' is deprecated, "
-                "use 'func_efficiency' instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            func_efficiency = detection_efficiency
-            detection_efficiency = 1.0
+    def __init__(self, detection_efficiency=None, detection_threshold=None):
 
         # input validation
-        if detection_efficiency < 0:
+        if detection_efficiency is not None and detection_threshold is not None:
             raise ValueError(
-                f"'detection_efficiency' must be non-negative but is {detection_efficiency}"
+                "Specify either 'detection_efficiency' or 'detection_threshold', not both"
             )
-        if detection_threshold is not None and detection_threshold < 0:
+        if detection_efficiency is None and detection_threshold is None:
             raise ValueError(
-                f"'detection_threshold' must be non-negative but is {detection_threshold}"
-            )
-        if func_efficiency is not None and not callable(func_efficiency):
-            raise ValueError(
-                f"'func_efficiency' must be callable but is {func_efficiency}"
+                "One of 'detection_efficiency' or 'detection_threshold' must be provided"
             )
 
-        # store parameters
-        self.detection_efficiency = detection_efficiency
+        if detection_threshold is not None:
+            self.detection_efficiency = lambda c: 1.0 if c >= detection_threshold else 0.0
+        else:
+            self.detection_efficiency = detection_efficiency
+
         self.detection_threshold = detection_threshold
-        self.func_efficiency = func_efficiency
 
         super().__init__(func=self._eval)
-
-    def _efficiency(self, concentration):
-        """Detection efficiency at a given concentration."""
-
-        # below the detection limit nothing is detected
-        if self.detection_threshold is not None and concentration < self.detection_threshold:
-            return 0.0
-
-        if self.func_efficiency is not None:
-            return self.func_efficiency(concentration)
-
-        return self.detection_efficiency
 
     def _eval(self, flux_in, flow_rate):
         concentration = flux_in / flow_rate if flow_rate > 0 else 0.0
 
-        signal = self._efficiency(concentration) * concentration
+        eff = self.detection_efficiency
+        epsilon = eff(concentration) if callable(eff) else eff
+
+        signal = epsilon * concentration
         flux_out = flux_in
 
         return (flux_out, signal)
