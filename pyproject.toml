@@ -12,7 +12,7 @@ license = {text = "MIT"}
 authors = [
     {name = "PathSim Contributors"}
 ]
-keywords = ["simulation", "pathsim", "block diagram"]
+keywords = ["simulation", "pathsim", "block diagram", "fusion", "tritium", "fuel cycle", "balance of plant"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -23,10 +23,13 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "pathsim>=0.22",
+    # GLC block uses pathsim.blocks.BVP1D, introduced in pathsim 0.23
+    "pathsim>=0.23",
     "numpy>=1.15",
+    "scipy>=1.2",
     # If your toolbox needs a dependency that ships native code (e.g.
     # pybamm, jsbsim, casadi, …) it will fail to install in Pyodide. Tag
     # it with a PEP 508 environment marker so a normal pip install on
@@ -44,6 +47,10 @@ dependencies = [
 test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
+]
+# Pinned so local runs and CI apply the same default rule set
+lint = [
+    "ruff==0.17.3",
 ]
 
 [project.urls]
@@ -66,3 +73,6 @@ files = ["src/pathsim_fusion"]
 python_version = "3.10"
 ignore_missing_imports = true
 warn_unused_ignores = true
+
+[tool.ruff]
+src = ["src", "tests"]

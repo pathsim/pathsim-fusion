@@ -6,6 +6,25 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ruff version is read from the `lint` extra in pyproject.toml
+      - name: ruff check
+        uses: astral-sh/ruff-action@v3
+        with:
+          version-file: pyproject.toml
+          args: check
+
+      - name: ruff format
+        uses: astral-sh/ruff-action@v3
+        with:
+          version-file: pyproject.toml
+          args: format --check
+
   test:
     runs-on: ubuntu-latest
     strategy:
