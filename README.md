@@ -24,6 +24,7 @@ PathSim block interface and can be connected into simulation diagrams.
 | Block | Description | Key Parameters |
 |-------|-------------|----------------|
 | `FirstOrderLag` | First-order lag / low-pass filter | `tau`, `y0` |
+| `IonisationChamber` | Flow-through tritium ionisation chamber (signal = ε(c)·c, flux passes through) | `detection_efficiency`, `detection_threshold`, `func_efficiency` |
 
 ## Install
 
