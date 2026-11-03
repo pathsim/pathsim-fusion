@@ -10,6 +10,8 @@
 import unittest
 
 import numpy as np
+from pathsim import Connection, Simulation
+from pathsim.blocks import Constant
 from pathsim.events.schedule import ScheduleList
 from pathsim.solvers import EUF
 
@@ -54,6 +56,7 @@ class TestTritiumBubbler4(unittest.TestCase):
         B = Bubbler4(replacement_times=[100, 200, 300])
         B.set_solver(EUF, parent=None)
         self.assertEqual(len(B.events), 4)
+
         # List of lists - one per vial
         times = [[100, 200], [150, 250], [120, 220], [180, 280]]
         B = Bubbler4(replacement_times=times)
@@ -61,6 +64,7 @@ class TestTritiumBubbler4(unittest.TestCase):
         self.assertEqual(len(B.events), 4)
         for event in B.events:
             self.assertIsInstance(event, ScheduleList)
+
         # NumPy array
         B = Bubbler4(replacement_times=np.array([100, 200, 300]))
         B.set_solver(EUF, parent=None)
@@ -107,6 +111,7 @@ class TestTritiumBubbler4(unittest.TestCase):
         sol_in, ins_in = 10.0, 5.0
         B.inputs[0] = sol_in
         B.inputs[1] = ins_in
+
         # Get rates and sample_out
         u = np.array([sol_in, ins_in])
         x = np.zeros(4)
@@ -163,6 +168,91 @@ class TestTritiumBubbler4(unittest.TestCase):
         self.assertEqual(x_after[1], 2.0)
         self.assertEqual(x_after[2], 3.0)
         self.assertEqual(x_after[3], 0.0)
+
+
+class TestTritiumBubbler4Fixes(unittest.TestCase):
+    """
+    Tests added when moving 'Bubbler4' from pathsim-chem: scalar replacement
+    times, parameter validation, port labels and full-simulation behaviour.
+    """
+
+    def test_scalar_replacement_time(self):
+        """A single replacement time creates one event per vial (all four vials)."""
+        for t in [10.0, 10, np.float64(10.0), np.int64(10)]:
+            with self.subTest(t=repr(t)):
+                B = Bubbler4(replacement_times=t)
+                self.assertEqual(len(B.events), 4)
+
+    def test_tuple_replacement_times(self):
+        """A flat tuple of times is used for all vials, like a flat list."""
+        B = Bubbler4(replacement_times=(100.0, 200.0))
+        self.assertEqual(len(B.events), 4)
+
+    def test_invalid_efficiencies(self):
+        """Efficiencies outside [0, 1] raise ValueError."""
+        for kwargs in [
+            {"vial_efficiency": 1.5},
+            {"vial_efficiency": -0.1},
+            {"conversion_efficiency": 1.1},
+            {"conversion_efficiency": -0.5},
+        ]:
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                Bubbler4(**kwargs)
+
+    def test_port_labels(self):
+        """Port labels are contiguous and in the documented order."""
+        self.assertEqual(
+            Bubbler4.input_port_labels,
+            {"sample_in_soluble": 0, "sample_in_insoluble": 1},
+        )
+        self.assertEqual(list(Bubbler4.output_port_labels.values()), [0, 1, 2, 3, 4])
+        self.assertEqual(Bubbler4.output_port_labels["sample_out"], 4)
+
+    def test_len(self):
+        """The sample output depends directly on the inputs (passthrough)."""
+        self.assertEqual(len(Bubbler4()), 1)
+
+    def _run(self, replacement_times, t_end, ve=0.8, ce=0.7, sol=1.0, ins=2.0):
+        """Helper: run a Bubbler4 with constant inputs through a full Simulation."""
+        src_sol, src_ins = Constant(sol), Constant(ins)
+        B = Bubbler4(
+            vial_efficiency=ve,
+            conversion_efficiency=ce,
+            replacement_times=replacement_times,
+        )
+        sim = Simulation(
+            blocks=[src_sol, src_ins, B],
+            connections=[
+                Connection(src_sol, B["sample_in_soluble"]),
+                Connection(src_ins, B["sample_in_insoluble"]),
+            ],
+            dt=0.01,
+            log=False,
+        )
+        sim.run(t_end)
+        return B
+
+    def test_simulation_conservation(self):
+        """Vial inventories plus integrated sample outflow equal the total input."""
+        t_end = 10.0
+        B = self._run(None, t_end)
+        vials = sum(B.outputs[i] for i in range(4))
+        self.assertAlmostEqual(
+            vials + B.outputs[4] * t_end, (1.0 + 2.0) * t_end, places=8
+        )
+
+    def test_simulation_scalar_replacement(self):
+        """With a scalar replacement time all vials restart from zero at that time."""
+        ve, ce, sol, ins = 0.8, 0.7, 1.0, 2.0
+        B = self._run(5.0, t_end=7.0, ve=ve, ce=ce, sol=sol, ins=ins)
+
+        # constant inputs -> each vial grows linearly for the 2 s since replacement
+        rate_3 = ve * (ce * ins + (1 - ve) ** 2 * sol)
+        expected = 2.0 * np.array(
+            [ve * sol, ve * (1 - ve) * sol, rate_3, rate_3 * (1 - ve)]
+        )
+        actual = np.array([B.outputs[i] for i in range(4)])
+        np.testing.assert_allclose(actual, expected, rtol=1e-6)
 
 
 # RUN TESTS LOCALLY ====================================================================
