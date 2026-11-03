@@ -13,9 +13,9 @@ except ImportError:
 
 # Pure-Python blocks — eager.
 from .example_block import FirstOrderLag
-from .tritium import IonisationChamber, Bubbler4, GLC
+from .tritium import GLC, Bubbler4, IonisationChamber
 
-__all__ = ["__version__", "FirstOrderLag", "IonisationChamber", "Bubbler4", "GLC"]
+__all__ = ["GLC", "Bubbler4", "FirstOrderLag", "IonisationChamber", "__version__"]
 
 # If you add blocks that depend on a native package (e.g. pybamm, jsbsim,
 # casadi, …) put them in their own submodule and re-export them defensively
