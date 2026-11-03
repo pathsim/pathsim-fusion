@@ -24,4 +24,4 @@ dependencies:
   - ipykernel
   - mypy
   - pip:
-      - -e .[test]
+      - -e .[test,lint]
