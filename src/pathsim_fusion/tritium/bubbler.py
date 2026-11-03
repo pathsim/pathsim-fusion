@@ -2,22 +2,24 @@
 ##
 ##                                      Bubbler Block
 ##
+##              Moved from pathsim-chem (src/pathsim_chem/tritium/bubbler.py)
+##
 #########################################################################################
 
 # IMPORTS ===============================================================================
+
+import numbers
 
 import numpy as np
 
 from pathsim.blocks.dynsys import DynamicalSystem
 from pathsim.events.schedule import ScheduleList
-from pathsim.utils.register import Register
 
 
-# BLOCK DEFIINITIONS ====================================================================
+# BLOCK DEFINITIONS =====================================================================
 
 class Bubbler4(DynamicalSystem):
-    """
-    Tritium bubbling system with sequential vial collection stages.
+    """Tritium bubbling system with sequential vial collection stages.
 
     This block models a tritium collection system used in fusion reactor blanket 
     purge gas processing. The system bubbles tritium-containing gas through a series 
@@ -49,13 +51,12 @@ class Bubbler4(DynamicalSystem):
 
     .. math::
 
-        \\frac{dx_1}{dt} &= \\eta_{vial} \\cdot u_{sol}
-
-        \\frac{dx_2}{dt} &= \\eta_{vial} \\cdot (1-\\eta_{vial}) \\cdot u_{sol}
-
-        \\frac{dx_3}{dt} &= \\eta_{vial} \\cdot [\\alpha_{conv} \\cdot u_{insol} + (1-\\eta_{vial})^2 \\cdot u_{sol}]
-
-        \\frac{dx_4}{dt} &= \\eta_{vial} \\cdot (1-\\eta_{vial}) \\cdot [\\alpha_{conv} \\cdot u_{insol} + (1-\\eta_{vial})^2 \\cdot u_{sol}]
+        \\begin{align}
+            \\frac{dx_1}{dt} &= \\eta_{vial} \\cdot u_{sol} \\\\
+            \\frac{dx_2}{dt} &= \\eta_{vial} \\cdot (1-\\eta_{vial}) \\cdot u_{sol} \\\\
+            \\frac{dx_3}{dt} &= \\eta_{vial} \\cdot [\\alpha_{conv} \\cdot u_{insol} + (1-\\eta_{vial})^2 \\cdot u_{sol}] \\\\
+            \\frac{dx_4}{dt} &= \\eta_{vial} \\cdot (1-\\eta_{vial}) \\cdot [\\alpha_{conv} \\cdot u_{insol} + (1-\\eta_{vial})^2 \\cdot u_{sol}]
+        \\end{align}
 
 
     The sample output represents uncaptured tritium exiting the system:
@@ -79,17 +80,30 @@ class Bubbler4(DynamicalSystem):
        between 0 and 1.
     vial_efficiency : float 
        Collection efficiency of each vial (:math:`\\eta_{vial}`), between 0 and 1.
-    replacement_times : float | list[float] | list[list[float]] 
-        Times at which each vial is replaced with a fresh one. If None, no 
-        replacement events are created. If a single value is provided, it is 
-        used for all vials. If a single list of floats is provided, it will be 
-        used for all vials. If a list of lists is provided, each sublist 
+    replacement_times : float | list[float] | list[list[float]] | None
+        Times at which each vial is replaced with a fresh one. If None, no
+        replacement events are created. If a single value is provided, it is
+        used for all vials. If a single list of floats is provided, it will be
+        used for all vials. If a list of four lists is provided, each sublist
         corresponds to the replacement times for each vial.
 
-    Notes
-    -----
-    Vial replacement is modeled as instantaneous reset events that set the 
-    corresponding vial inventory to zero, simulating the physical replacement 
+    Inputs
+    ------
+    sample_in_soluble (0) : soluble tritium flow rate into the bubbler
+    sample_in_insoluble (1) : insoluble tritium flow rate into the bubbler
+
+    Outputs
+    -------
+    vial1 (0) : tritium inventory in vial 1
+    vial2 (1) : tritium inventory in vial 2
+    vial3 (2) : tritium inventory in vial 3
+    vial4 (3) : tritium inventory in vial 4
+    sample_out (4) : uncaptured tritium flow rate leaving the bubbler
+
+    Note
+    ----
+    Vial replacement is modeled as instantaneous reset events that set the
+    corresponding vial inventory to zero, simulating the physical replacement
     of a full vial with an empty one.
     """
 
@@ -111,6 +125,16 @@ class Bubbler4(DynamicalSystem):
         vial_efficiency=0.9,
         replacement_times=None,
         ):
+
+        #input validation
+        if not 0 <= conversion_efficiency <= 1:
+            raise ValueError(
+                f"'conversion_efficiency' must be between 0 and 1 but is {conversion_efficiency}"
+            )
+        if not 0 <= vial_efficiency <= 1:
+            raise ValueError(
+                f"'vial_efficiency' must be between 0 and 1 but is {vial_efficiency}"
+            )
 
         #bubbler parameters
         self.replacement_times = replacement_times
@@ -190,23 +214,25 @@ class Bubbler4(DynamicalSystem):
         replacement_times = self.replacement_times
         self.events = []
 
-        # if reset_times is a single list use it for all vials
+        #no replacement
         if replacement_times is None:
-            return 
+            return
 
-        if isinstance(replacement_times, (int, float)):
-            replacement_times = [replacement_times]
+        #a single time is used for all vials (numbers.Real also covers numpy scalars)
+        if isinstance(replacement_times, numbers.Real):
+            replacement_times = [[replacement_times]] * 4
 
-        # if it's a flat list use it for all vials
-        elif isinstance(replacement_times, list) and all(
-            isinstance(t, (int, float)) for t in replacement_times
+        #a flat list of times is used for all vials
+        elif isinstance(replacement_times, (list, tuple)) and all(
+            isinstance(t, numbers.Real) for t in replacement_times
             ):
-            replacement_times = [replacement_times] * 4
+            replacement_times = [list(replacement_times)] * 4
 
         elif isinstance(replacement_times, np.ndarray) and replacement_times.ndim == 1:
             replacement_times = [replacement_times.tolist()] * 4
 
-        elif isinstance(replacement_times, list) and len(replacement_times) != 4:
+        #otherwise one list of times per vial
+        elif len(replacement_times) != 4:
             raise ValueError(
                 "replacement_times must be a single value or a list with the same length as the number of vials"
             )
