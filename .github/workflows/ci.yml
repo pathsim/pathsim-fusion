@@ -25,7 +25,7 @@ jobs:
         run: pip install -e ".[test]" mypy
 
       - name: mypy
-        run: mypy src/pathsim_toolbox
+        run: mypy src/pathsim_fusion
 
       - name: pytest
         run: pytest tests/ -v --tb=short

@@ -1,0 +1,27 @@
+# Development environment for pathsim-fusion.
+#
+#   conda env create -f environment.yml
+#   conda activate pathsim-fusion
+#
+# Update after changing dependencies:
+#
+#   conda env update -f environment.yml --prune
+#
+# pathsim itself comes from PyPI via the package's own dependencies. To develop
+# against a local checkout of core instead, run afterwards:
+#
+#   pip install -e ../pathsim
+
+name: pathsim-fusion
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  - numpy
+  - scipy
+  - matplotlib
+  - ipykernel
+  - mypy
+  - pip:
+      - -e .[test]
