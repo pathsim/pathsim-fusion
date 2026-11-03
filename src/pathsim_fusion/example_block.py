@@ -11,6 +11,8 @@
 
 # IMPORTS ==============================================================================
 
+from typing import ClassVar
+
 import numpy as np
 from pathsim.blocks import DynamicalSystem
 
@@ -40,8 +42,8 @@ class FirstOrderLag(DynamicalSystem):
     y (0) : low-pass filtered signal
     """
 
-    input_port_labels = {"u": 0}
-    output_port_labels = {"y": 0}
+    input_port_labels: ClassVar[dict[str, int]] = {"u": 0}
+    output_port_labels: ClassVar[dict[str, int]] = {"y": 0}
 
     def __init__(self, tau=1.0, y0=0.0):
         # input validation

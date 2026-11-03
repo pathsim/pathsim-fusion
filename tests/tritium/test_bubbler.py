@@ -8,13 +8,12 @@
 # IMPORTS ==============================================================================
 
 import unittest
+
 import numpy as np
+from pathsim.events.schedule import ScheduleList
+from pathsim.solvers import EUF
 
 from pathsim_fusion.tritium import Bubbler4
-
-from pathsim.solvers import EUF
-from pathsim.events.schedule import ScheduleList
-
 
 # TESTS ================================================================================
 

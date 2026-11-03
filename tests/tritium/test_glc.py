@@ -8,21 +8,18 @@
 # IMPORTS ==============================================================================
 
 import unittest
-import numpy as np
 
+import numpy as np
+from pathsim import Connection, Simulation
+from pathsim.blocks import BVP1D, Constant, Scope
 from scipy.integrate import solve_bvp
 
-from pathsim_fusion.tritium import GLC
-from pathsim_fusion.tritium import glc
-
-from pathsim import Simulation, Connection
-from pathsim.blocks import BVP1D, Constant, Scope
-
+from pathsim_fusion.tritium import GLC, glc
 
 # HELPERS =============================================================================
 
 # fixed operating point and geometry used across the tests
-_BASE = dict(P_in=2e5, L=1.0, D=0.1, T=623.0, g=9.81)
+_BASE = {"P_in": 2e5, "L": 1.0, "D": 0.1, "T": 623.0, "g": 9.81}
 
 # per-evaluation boundary data (c_T_in, flow_l, y_T2_inlet, flow_g)
 _INPUT = (1e-3, 1.0, 0.0, 1e-4)

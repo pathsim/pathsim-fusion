@@ -11,7 +11,6 @@ import unittest
 
 from pathsim_fusion.tritium import IonisationChamber
 
-
 # TESTS ================================================================================
 
 

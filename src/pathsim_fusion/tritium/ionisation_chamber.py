@@ -6,6 +6,8 @@
 
 # IMPORTS ===============================================================================
 
+from typing import ClassVar
+
 from pathsim.blocks.function import Function
 
 # BLOCKS ================================================================================
@@ -49,12 +51,12 @@ class IonisationChamber(Function):
         threshold, 0 below. Mutually exclusive with *detection_efficiency*.
     """
 
-    input_port_labels = {
+    input_port_labels: ClassVar[dict[str, int]] = {
         "flux_in": 0,
         "flow_rate": 1,
     }
 
-    output_port_labels = {
+    output_port_labels: ClassVar[dict[str, int]] = {
         "flux_out": 0,
         "signal": 1,
     }
