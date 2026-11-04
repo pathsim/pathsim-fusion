@@ -13,7 +13,7 @@ import numpy as np
 from pathsim import Connection, Simulation
 from pathsim.blocks import Constant
 from pathsim.events.schedule import ScheduleList
-from pathsim.solvers import EUF
+from pathsim.solvers import ESDIRK43, EUF, RKCK54
 
 from pathsim_fusion.tritium import Bubbler4
 
@@ -253,6 +253,134 @@ class TestTritiumBubbler4Fixes(unittest.TestCase):
         )
         actual = np.array([B.outputs[i] for i in range(4)])
         np.testing.assert_allclose(actual, expected, rtol=1e-6)
+
+
+class TestTritiumBubbler4Physics(unittest.TestCase):
+    """
+    Physics and event checks for 'Bubbler4' against hand-derived values: every
+    output with distinct inputs, efficiency limits, per-vial replacement timing,
+    solver independence and independence of two instances.
+    """
+
+    def _expected_rates(self, ve, ce, sol, ins):
+        """Hand-derived vial accumulation rates and sample outflow."""
+        a = ce * ins + (1 - ve) ** 2 * sol
+        rates = np.array([ve * sol, ve * (1 - ve) * sol, ve * a, ve * (1 - ve) * a])
+        return rates, (1 - ce) * ins + (1 - ve) ** 2 * a
+
+    def _run(self, B, t_end, sol, ins, Solver=EUF):
+        """Run 'B' with constant inputs and return all five outputs."""
+        src_sol, src_ins = Constant(sol), Constant(ins)
+        sim = Simulation(
+            blocks=[src_sol, src_ins, B],
+            connections=[
+                Connection(src_sol, B["sample_in_soluble"]),
+                Connection(src_ins, B["sample_in_insoluble"]),
+            ],
+            dt=0.01,
+            Solver=Solver,
+            log=False,
+        )
+        sim.run(t_end)
+        return np.array([B.outputs[i] for i in range(5)])
+
+    def test_all_outputs_distinct_inputs(self):
+        """Every output matches the hand calculation, with distinct values on each
+        input and parameter so a swapped port or parameter shows up."""
+        ve, ce, sol, ins, t_end = 0.6, 0.3, 3.0, 7.0, 2.0
+        B = Bubbler4(vial_efficiency=ve, conversion_efficiency=ce)
+        rates, sample_out = self._expected_rates(ve, ce, sol, ins)
+        expected = np.hstack([rates * t_end, sample_out])
+        np.testing.assert_allclose(self._run(B, t_end, sol, ins), expected, rtol=1e-10)
+
+    def test_efficiency_limits(self):
+        """At the efficiency limits tritium ends up exactly where expected, and
+        the balance closes in each case."""
+        sol, ins = 3.0, 7.0
+        cases = {
+            # (ve, ce): (vial1, vial2, vial3, vial4, sample_out)
+            (0.0, 0.0): (0.0, 0.0, 0.0, 0.0, 10.0),
+            (1.0, 1.0): (3.0, 0.0, 7.0, 0.0, 0.0),
+            (1.0, 0.0): (3.0, 0.0, 0.0, 0.0, 7.0),
+            (0.0, 1.0): (0.0, 0.0, 0.0, 0.0, 10.0),
+        }
+        for (ve, ce), expected in cases.items():
+            with self.subTest(vial_efficiency=ve, conversion_efficiency=ce):
+                B = Bubbler4(vial_efficiency=ve, conversion_efficiency=ce)
+                out = self._run(B, 1.0, sol, ins)
+                np.testing.assert_allclose(out, expected, atol=1e-12)
+
+    def test_per_vial_replacement_timing(self):
+        """With one replacement time per vial, each vial restarts from zero at its
+        own time and the other vials are untouched."""
+        ve, t_end = 0.9, 5.0
+        B = Bubbler4(
+            vial_efficiency=ve,
+            conversion_efficiency=0.5,
+            replacement_times=[[1.0], [2.0], [3.0], [4.0]],
+        )
+        rates, _ = self._expected_rates(ve, 0.5, 1.0, 0.0)
+        since_reset = t_end - np.array([1.0, 2.0, 3.0, 4.0])
+        out = self._run(B, t_end, 1.0, 0.0)
+        np.testing.assert_allclose(out[:4], rates * since_reset, rtol=1e-8)
+
+    def test_replacement_at_end_of_run(self):
+        """A replacement scheduled at the final time empties the vials."""
+        B = Bubbler4(replacement_times=5.0)
+        out = self._run(B, 5.0, 1.0, 2.0)
+        np.testing.assert_allclose(out[:4], np.zeros(4), atol=1e-12)
+
+    def test_unsorted_replacement_times(self):
+        """Replacement times out of order are rejected rather than silently
+        reordered."""
+        with self.assertRaises(ValueError):
+            Bubbler4(replacement_times=[3.0, 1.0])
+
+    def test_solver_independence(self):
+        """Explicit and implicit solvers give the same inventories (the rates are
+        constant between replacements, so every solver should be exact)."""
+        results = []
+        for Solver in [EUF, RKCK54, ESDIRK43]:
+            with self.subTest(Solver=Solver.__name__):
+                B = Bubbler4(replacement_times=[1.5, 3.2])
+                results.append(self._run(B, 4.0, 3.0, 7.0, Solver=Solver))
+        for out in results[1:]:
+            np.testing.assert_allclose(out, results[0], rtol=1e-8)
+
+    def test_instances_independent(self):
+        """Two bubblers in one simulation keep separate states and events."""
+        B1 = Bubbler4(replacement_times=1.0)
+        B2 = Bubbler4()
+        src_sol, src_ins = Constant(1.0), Constant(0.0)
+        sim = Simulation(
+            blocks=[src_sol, src_ins, B1, B2],
+            connections=[
+                Connection(src_sol, B1[0], B2[0]),
+                Connection(src_ins, B1[1], B2[1]),
+            ],
+            dt=0.01,
+            log=False,
+        )
+        sim.run(2.0)
+        self.assertAlmostEqual(B1.outputs[0], 0.9 * 1.0, places=10)
+        self.assertAlmostEqual(B2.outputs[0], 0.9 * 2.0, places=10)
+
+    def test_reset_and_rerun(self):
+        """After 'sim.reset()' a second run reproduces the first, events included."""
+        B = Bubbler4(replacement_times=2.0)
+        src_sol, src_ins = Constant(1.0), Constant(2.0)
+        sim = Simulation(
+            blocks=[src_sol, src_ins, B],
+            connections=[Connection(src_sol, B[0]), Connection(src_ins, B[1])],
+            dt=0.01,
+            log=False,
+        )
+        sim.run(3.0)
+        first = np.array([B.outputs[i] for i in range(5)])
+        sim.reset()
+        sim.run(3.0)
+        second = np.array([B.outputs[i] for i in range(5)])
+        np.testing.assert_allclose(second, first, rtol=1e-12)
 
 
 # RUN TESTS LOCALLY ====================================================================
