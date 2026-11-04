@@ -239,6 +239,29 @@ class TestGLC(unittest.TestCase):
         with self.assertRaises(ValueError):
             blk.update(0.0)
 
+    def test_gravity_argument(self):
+        """The `g` argument sets the gravitational acceleration of the model."""
+        base = {k: v for k, v in _BASE.items() if k != "g"}
+
+        def solve(**kwargs):
+            blk = GLC(BCs="C-C", **base, **kwargs)
+            blk.inputs.update_from_array(np.array(_INPUT))
+            blk.update(0.0)
+            self.assertTrue(blk.success)
+            return blk.outputs["P_out"], blk.outputs["eff"]
+
+        # Moon, Earth, a heavier planet: the hydrostatic head and the hold-up change
+        (p_moon, e_moon), (p_earth, e_earth), (p_high, e_high) = (
+            solve(g=g) for g in (1.62, 9.8, 15.0)
+        )
+        self.assertGreater(p_moon, p_earth)
+        self.assertGreater(p_earth, p_high)
+        self.assertNotAlmostEqual(e_moon, e_earth, places=6)
+        self.assertNotAlmostEqual(e_earth, e_high, places=6)
+
+        # the default is standard gravity
+        self.assertEqual(solve(), solve(g=9.80665))
+
     def test_simulation(self):
         """The block runs inside a Simulation driven by constant sources."""
         srcs = [Constant(v) for v in _INPUT]

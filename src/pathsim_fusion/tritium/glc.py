@@ -17,7 +17,6 @@ from pathsim.blocks import BVP1D
 from scipy.optimize import root_scalar
 
 # --- Physical Constants ---
-g = const.g  # m/s^2, Gravitational acceleration
 R = const.R  # J/(mol·K), Universal gas constant
 N_A = const.N_A  # 1/mol, Avogadro's number
 M_LiPb = 2.875e-25  # Kg/molecule, Lipb molecular mass
@@ -32,7 +31,7 @@ def _calculate_properties(params):
     geometry and operating conditions.
 
     Args:
-        params (dict): Dictionary of input parameters including T, D, Flow_l,
+        params (dict): Dictionary of input parameters including T, D, g, Flow_l,
                        Flow_g, and P_0.
 
     Returns:
@@ -43,6 +42,7 @@ def _calculate_properties(params):
     flow_l = params["flow_l"]
     flow_g = params["flow_g"]
     P_in = params["P_in"]
+    g = params["g"]
 
     # --- Fluid Properties (Temperature Dependent) ---
     # TODO add references
@@ -126,11 +126,12 @@ def _calculate_dimensionless_groups(params, phys_props):
               Bo_g, phi_g, psi, nu).
     """
     # Unpack parameters
-    L, T, P_in, c_T_in = (
+    L, T, P_in, c_T_in, g = (
         params["L"],
         params["T"],
         params["P_in"],
         params["c_T_in"],
+        params["g"],
     )
 
     # Unpack physical properties
@@ -450,7 +451,7 @@ class GLC(BVP1D):
         phys = _calculate_properties(p)
 
         # guard against a non-physical (non-positive) gas outlet pressure
-        P_out = p["P_in"] - phys["rho_l"] * (1 - phys["epsilon_g"]) * g * p["L"]
+        P_out = p["P_in"] - phys["rho_l"] * (1 - phys["epsilon_g"]) * p["g"] * p["L"]
         if P_out <= 0:
             raise ValueError(
                 f"Calculated gas outlet pressure is non-positive ({P_out:.2e} Pa). "
