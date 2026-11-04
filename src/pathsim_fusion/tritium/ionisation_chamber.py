@@ -8,6 +8,7 @@
 
 # IMPORTS ===============================================================================
 
+import math
 import warnings
 from typing import ClassVar
 
@@ -52,7 +53,8 @@ class IonisationChamber(Function):
         0                               & , c < c_{min}
         \\end{cases}
 
-    For a non-positive flow rate the concentration is taken as zero.
+    For a non-positive flow rate the concentration is taken as zero; a NaN
+    flow rate gives a NaN signal.
 
     Parameters
     ----------
@@ -145,7 +147,12 @@ class IonisationChamber(Function):
         return self.detection_efficiency
 
     def _eval(self, flux_in, flow_rate):
-        concentration = flux_in / flow_rate if flow_rate > 0 else 0.0
+        # no flow means no sample, but a NaN flow rate is an upstream error and
+        # is passed on as NaN rather than hidden as a zero signal
+        if flow_rate > 0 or math.isnan(flow_rate):
+            concentration = flux_in / flow_rate
+        else:
+            concentration = 0.0
 
         signal = self._efficiency(concentration) * concentration
         flux_out = flux_in

@@ -7,6 +7,7 @@
 
 # IMPORTS ==============================================================================
 
+import math
 import unittest
 
 from pathsim import Connection, Simulation
@@ -190,6 +191,13 @@ class TestIonisationChamberUpdate(unittest.TestCase):
         """Negative flow rate is treated like zero flow, signal = 0."""
         _, signal = self._signal(IonisationChamber(), 100.0, -10.0)
         self.assertAlmostEqual(signal, 0.0)
+
+    def test_nan_flow_rate(self):
+        """A NaN flow rate gives a NaN signal instead of a plausible zero, so an
+        upstream error is not hidden. The flux still passes through unchanged."""
+        flux_out, signal = self._signal(IonisationChamber(), 100.0, float("nan"))
+        self.assertAlmostEqual(flux_out, 100.0)
+        self.assertTrue(math.isnan(signal))
 
 
 class TestIonisationChamberSimulation(unittest.TestCase):
