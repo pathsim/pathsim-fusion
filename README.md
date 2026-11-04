@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="https://raw.githubusercontent.com/pathsim/pathsim-fusion/master/docs/source/logos/fusion_logo.png" width="300" alt="PathSim-Fusion Logo" />
+</p>
+
+<p align="center">
   <strong>Fusion fuel cycle and balance-of-plant blocks for PathSim</strong>
 </p>
 
