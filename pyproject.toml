@@ -26,8 +26,8 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    # GLC block uses pathsim.blocks.BVP1D, introduced in pathsim 0.23
-    "pathsim>=0.23",
+    # GLC passes a graded initial mesh to BVP1D, from pathsim 0.30.3
+    "pathsim>=0.30.3",
     "numpy>=1.15",
     "scipy>=1.2",
     # If your toolbox needs a dependency that ships native code (e.g.
