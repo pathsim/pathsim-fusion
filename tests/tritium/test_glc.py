@@ -11,7 +11,7 @@ import unittest
 
 import numpy as np
 from pathsim import Connection, Simulation
-from pathsim.blocks import BVP1D, Constant, Scope
+from pathsim.blocks import BVP1D, Constant, Scope, Source
 from scipy.integrate import solve_bvp
 
 from pathsim_fusion.tritium import GLC, glc
@@ -46,14 +46,15 @@ def _reference(BCs):
     dim = glc._calculate_dimensionless_groups(p, phys)
     y2in = max(p["y_T2_in"], 1e-20)
 
-    Bo_l, phi_l, Bo_g, phi_g, psi, nu = (
+    Bo_l, phi_l, Bo_g, psi, nu = (
         dim["Bo_l"],
         dim["phi_l"],
         dim["Bo_g"],
-        dim["phi_g"],
         dim["psi"],
         dim["nu"],
     )
+    # the block scales the gas by nu, the reference keeps the mole fraction
+    phi_g = dim["k"] * nu
 
     def ode(xi, S):
         x_T, dx, y_T2, dy = S
@@ -128,10 +129,11 @@ class TestGLC(unittest.TestCase):
         self.assertTrue(blk.success)
         x_T_ref, y_T2_ref = _reference("C-C")
         res = blk.results()
-        self.assertAlmostEqual(
-            res["c_T_outlet [mol/m^3]"], x_T_ref * _INPUT[0], places=12
+        # both solves meet the collocation tolerance, on different variables
+        np.testing.assert_allclose(
+            res["extraction_efficiency [fraction]"], 1 - x_T_ref, rtol=1e-5
         )
-        self.assertAlmostEqual(res["y_T2_outlet_gas"], y_T2_ref, places=12)
+        np.testing.assert_allclose(res["y_T2_outlet_gas"], y_T2_ref, rtol=1e-5)
 
     def test_solve_matches_reference_oc(self):
         """The O-C solve matches an independent scipy.solve_bvp reference."""
@@ -142,10 +144,11 @@ class TestGLC(unittest.TestCase):
         self.assertTrue(blk.success)
         x_T_ref, y_T2_ref = _reference("O-C")
         res = blk.results()
-        self.assertAlmostEqual(
-            res["c_T_outlet [mol/m^3]"], x_T_ref * _INPUT[0], places=12
+        # both solves meet the collocation tolerance, on different variables
+        np.testing.assert_allclose(
+            res["extraction_efficiency [fraction]"], 1 - x_T_ref, rtol=1e-5
         )
-        self.assertAlmostEqual(res["y_T2_outlet_gas"], y_T2_ref, places=12)
+        np.testing.assert_allclose(res["y_T2_outlet_gas"], y_T2_ref, rtol=1e-5)
 
         # the open inlet condition neglects the dispersive flux, so O-C does not
         # close the mass balance exactly; the residual is small but non-trivial
@@ -198,12 +201,107 @@ class TestGLC(unittest.TestCase):
             idx = blk.output_port_labels[label]
             self.assertAlmostEqual(blk.outputs[idx], res[key], places=12)
 
-    def test_unknown_bc_raises(self):
-        """An unknown boundary-condition type is rejected at solve time."""
-        blk = GLC(BCs="bogus", **_BASE)
-        blk.inputs.update_from_array(np.array(_INPUT))
-        with self.assertRaises(ValueError):
+    def test_invalid_parameters_raise(self):
+        """Parameters outside their valid range are rejected at construction."""
+        for override in (
+            {"BCs": "bogus"},
+            {"L": 0.0},
+            {"D": -0.1},
+            {"T": 0.0},
+            {"P_in": -1.0},
+            {"g": 0.0},
+            {"tol": 0.0},
+            {"initial_nb_of_elements": 0},
+            {"max_nodes": 10},
+        ):
+            with self.subTest(**override), self.assertRaises(ValueError):
+                GLC(**{"BCs": "C-C", **_BASE, **override})
+
+    def test_invalid_inputs_raise(self):
+        """Physically impossible boundary data raises at evaluation."""
+        for u in (
+            (-1e-3, 1.0, 0.0, 1e-4),  # negative concentration
+            (1e-3, 0.0, 0.0, 1e-4),  # no liquid flow
+            (1e-3, 1.0, -0.1, 1e-4),  # negative mole fraction
+            (1e-3, 1.0, 1.5, 1e-4),  # mole fraction above one
+            (1e-3, 1.0, 0.0, 0.0),  # no purge gas
+            (0.0, 1.0, 1e-6, 1e-4),  # clean liquid, tritiated gas
+        ):
+            blk = GLC(BCs="C-C", **_BASE)
+            blk.inputs.update_from_array(np.array(u))
+            with self.subTest(u=u), self.assertRaises(ValueError):
+                blk.update(0.0)
+
+    def test_nan_input_passes_through(self):
+        """A NaN input gives NaN outputs instead of an error."""
+        blk = GLC(BCs="C-C", **_BASE)
+        blk.inputs.update_from_array(np.array((np.nan, 1.0, 0.0, 1e-4)))
+        blk.update(0.0)
+        self.assertTrue(np.isnan(blk.outputs.to_array()).all())
+
+    def test_zero_inlet_gives_zero(self):
+        """A tritium-free inlet gives zero tritium flows, for both BCs."""
+        for BCs in ("C-C", "O-C"):
+            blk = GLC(BCs=BCs, **_BASE)
+            blk.inputs.update_from_array(np.array((0.0, 1.0, 0.0, 1e-4)))
             blk.update(0.0)
+            for label in (
+                "c_T_out",
+                "y_T2_out",
+                "eff",
+                "n_T_out_liquid",
+                "n_T_out_gas",
+            ):
+                self.assertEqual(blk.outputs[label], 0.0)
+
+    def test_low_inlet_concentration(self):
+        """At low inlet concentration the efficiency goes to zero linearly.
+
+        Sieverts' law caps what the purge gas can take up, so ``eff / c_T_in``
+        tends to a constant, continuous across the switch from the solve to the
+        gas-limited limit, and C-C still closes the tritium balance.
+        """
+        for BCs in ("C-C", "O-C"):
+            ratios = []
+            for c in (1e-4, 1e-5, 1e-6, 1e-7, 1e-9, 1e-12):
+                blk = GLC(BCs=BCs, **_BASE)
+                blk.inputs.update_from_array(np.array((c, 1.0, 0.0, 1e-4)))
+                blk.update(0.0)
+                res = blk.results()
+                ratios.append(res["extraction_efficiency [fraction]"] / c)
+                if BCs == "C-C":
+                    rel = (
+                        abs(res["mass_balance_residual [mol/s]"])
+                        / res["Total tritium in [mol/s]"]
+                    )
+                    self.assertLess(rel, 1e-6)
+            with self.subTest(BCs=BCs):
+                # converging towards the limit, with the last steps unchanged
+                np.testing.assert_allclose(ratios[2:], ratios[-1], rtol=1e-2)
+                np.testing.assert_allclose(ratios[-2], ratios[-1], rtol=1e-6)
+
+    def test_high_inlet_concentration(self):
+        """Both BCs converge at high inlet concentration."""
+        for BCs in ("C-C", "O-C"):
+            for c in (1.0, 1e-1, 1e-2):
+                blk = GLC(BCs=BCs, **_BASE)
+                blk.inputs.update_from_array(np.array((c, 1.0, 0.0, 1e-4)))
+                with self.subTest(BCs=BCs, c=c):
+                    blk.update(0.0)
+                    self.assertGreater(blk.outputs["eff"], 0.0)
+
+    def test_result_independent_of_history(self):
+        """A step change of the input gives the same result as a fresh block."""
+        blk = GLC(BCs="C-C", **_BASE)
+        for c in (1e-3, 1e-4, 1e-3, 1e-5, 1e-3):
+            blk.inputs.update_from_array(np.array((c, 1.0, 0.0, 1e-4)))
+            blk.update(0.0)
+            fresh = GLC(BCs="C-C", **_BASE)
+            fresh.inputs.update_from_array(np.array((c, 1.0, 0.0, 1e-4)))
+            fresh.update(0.0)
+            np.testing.assert_allclose(
+                blk.outputs["eff"], fresh.outputs["eff"], rtol=1e-6
+            )
 
     def test_input_unchanged_skips_resolve(self):
         """A re-evaluation with unchanged input does not re-solve the BVP."""
@@ -238,6 +336,47 @@ class TestGLC(unittest.TestCase):
         blk.inputs.update_from_array(np.array(_INPUT))
         with self.assertRaises(ValueError):
             blk.update(0.0)
+
+    def test_gravity_argument(self):
+        """The `g` argument sets the gravitational acceleration of the model."""
+        base = {k: v for k, v in _BASE.items() if k != "g"}
+
+        def solve(**kwargs):
+            blk = GLC(BCs="C-C", **base, **kwargs)
+            blk.inputs.update_from_array(np.array(_INPUT))
+            blk.update(0.0)
+            self.assertTrue(blk.success)
+            return blk.outputs["P_out"], blk.outputs["eff"]
+
+        # Moon, Earth, a heavier planet: the hydrostatic head and the hold-up change
+        (p_moon, e_moon), (p_earth, e_earth), (p_high, e_high) = (
+            solve(g=g) for g in (1.62, 9.8, 15.0)
+        )
+        self.assertGreater(p_moon, p_earth)
+        self.assertGreater(p_earth, p_high)
+        self.assertNotAlmostEqual(e_moon, e_earth, places=6)
+        self.assertNotAlmostEqual(e_earth, e_high, places=6)
+
+        # the default is standard gravity
+        self.assertEqual(solve(), solve(g=9.80665))
+
+    def test_simulation_decaying_feed(self):
+        """A feed decaying towards zero runs through the gas-limited regime."""
+        srcs = [Source(lambda t: 1e-3 * np.exp(-t)), *(Constant(v) for v in _INPUT[1:])]
+        block = GLC(BCs="C-C", **_BASE)
+        sco = Scope()
+        sim = Simulation(
+            blocks=[*srcs, block, sco],
+            connections=[Connection(srcs[i], block[i]) for i in range(4)]
+            + [Connection(block["eff"], sco[0])],
+            dt=0.5,
+            log=False,
+        )
+        sim.run(20.0)
+
+        _, (eff,) = sco.read()
+        self.assertTrue(np.isfinite(eff).all())
+        self.assertLess(eff[-1], 1e-9)
 
     def test_simulation(self):
         """The block runs inside a Simulation driven by constant sources."""

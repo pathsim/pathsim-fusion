@@ -6,21 +6,33 @@ equations that describe tritium transport in a counter-current bubble column,
 based on the model by C. Malara (1995). The boundary value problem is solved
 with the native :class:`~pathsim.blocks.BVP1D` block, which warm-starts the
 mesh between evaluations and skips the re-solve when the boundary data is
-unchanged.
+unchanged. In the gas-limited regime, where the purge gas leaves in
+equilibrium with the liquid inlet, the closed-form limit replaces the solve.
 """
 
+import math
 from typing import ClassVar
 
 import numpy as np
 import scipy.constants as const
 from pathsim.blocks import BVP1D
+from scipy.integrate import quad
 from scipy.optimize import root_scalar
 
+from ..constants import (
+    GLC_GAS_LIMITED_K,
+    GLC_MESH_EDGE_NODES,
+    GLC_MESH_EDGE_SPACING,
+    GLC_W_IN_MIN,
+)
+
 # --- Physical Constants ---
-g = const.g  # m/s^2, Gravitational acceleration
 R = const.R  # J/(mol·K), Universal gas constant
 N_A = const.N_A  # 1/mol, Avogadro's number
 M_LiPb = 2.875e-25  # Kg/molecule, Lipb molecular mass
+
+# --- Boundary condition types ---
+BC_TYPES = ("C-C", "O-C")
 
 
 def _calculate_properties(params):
@@ -32,7 +44,7 @@ def _calculate_properties(params):
     geometry and operating conditions.
 
     Args:
-        params (dict): Dictionary of input parameters including T, D, Flow_l,
+        params (dict): Dictionary of input parameters including T, D, g, Flow_l,
                        Flow_g, and P_0.
 
     Returns:
@@ -43,6 +55,7 @@ def _calculate_properties(params):
     flow_l = params["flow_l"]
     flow_g = params["flow_g"]
     P_in = params["P_in"]
+    g = params["g"]
 
     # --- Fluid Properties (Temperature Dependent) ---
     # TODO add references
@@ -117,20 +130,23 @@ def _calculate_dimensionless_groups(params, phys_props):
 
     Args:
         params (dict): Dictionary of input parameters including L, T, P_in,
-                       and c_T_inlet.
+                       g and c_T_inlet.
         phys_props (dict): Dictionary of physical properties calculated by
                            _calculate_properties.
 
     Returns:
         dict: A dictionary containing the dimensionless groups (Bo_l, phi_l,
-              Bo_g, phi_g, psi, nu).
+              Bo_g, psi, nu, k). The gas phase is scaled by ``nu``, so ``k`` is
+              the transfer number of the scaled gas balance. It grows as
+              ``1/c_T_in`` and is infinite for a tritium-free liquid inlet.
     """
     # Unpack parameters
-    L, T, P_in, c_T_in = (
+    L, T, P_in, c_T_in, g = (
         params["L"],
         params["T"],
         params["P_in"],
         params["c_T_in"],
+        params["g"],
     )
 
     # Unpack physical properties
@@ -153,102 +169,148 @@ def _calculate_dimensionless_groups(params, phys_props):
     Bo_l = u_l * L / (epsilon_l * E_l)  # Bodenstein number, liquid
     phi_l = a * h_l * L / u_l  # Transfer units, liquid
     Bo_g = u_g0 * L / (epsilon_g * E_g)  # Bodenstein number, gas
-    phi_g = 0.5 * (R * T * c_T_in / P_in) * (a * h_l * L / u_g0)
+
+    # Transfer units of the gas balance scaled by nu, k = phi_g / nu with
+    # phi_g = 0.5 (R T c_T_in / P_in) (a h_l L / u_g0), written without nu
+    k = 0.5 * R * T * K_s**2 * a * h_l * L / u_g0
+    k = k / c_T_in if c_T_in > 0 else math.inf
 
     return {
         "Bo_l": Bo_l,
         "phi_l": phi_l,
         "Bo_g": Bo_g,
-        "phi_g": phi_g,
         "psi": psi,
         "nu": nu,
+        "k": k,
     }
 
 
 def _ode_system(xi, S, dim):
     """First-order ODE system (4 equations) of the dimensionless GLC model.
 
-    The state is ``S = [x_T, dx_T/d(xi), y_T2, dy_T2/d(xi)]``. The signature
-    matches what the native :class:`~pathsim.blocks.BVP1D` block expects, with
-    the spatial mesh ``xi`` of shape ``(m,)`` and the state ``S`` of shape
-    ``(4, m)``.
+    The state is ``S = [x_T, dx_T/d(xi), w, dw/d(xi)]``, with the liquid
+    concentration scaled by ``c_T_in`` and the gas mole fraction scaled by the
+    equilibrium ratio, ``w = y_T2 / nu``, so all states are of order one at any
+    inlet concentration. The signature matches what the native
+    :class:`~pathsim.blocks.BVP1D` block expects, with the spatial mesh ``xi``
+    of shape ``(m,)`` and the state ``S`` of shape ``(4, m)``.
 
     Args:
         xi (numpy.ndarray): Dimensionless axial coordinate, shape ``(m,)``.
         S (numpy.ndarray): State, shape ``(4, m)``.
-        dim (dict): Dimensionless groups (Bo_l, phi_l, Bo_g, phi_g, psi, nu).
+        dim (dict): Dimensionless groups (Bo_l, phi_l, Bo_g, psi, k).
 
     Returns:
         numpy.ndarray: Derivatives ``dS/d(xi)``, shape ``(4, m)``.
     """
-    Bo_l, phi_l, Bo_g, phi_g, psi, nu = (
+    Bo_l, phi_l, Bo_g, psi, k = (
         dim["Bo_l"],
         dim["phi_l"],
         dim["Bo_g"],
-        dim["phi_g"],
         dim["psi"],
-        dim["nu"],
+        dim["k"],
     )
 
-    x_T, dx_T_dxi, y_T2, dy_T2_dxi = S
-    theta = x_T - np.sqrt(np.maximum(0, (1 - psi * xi) * y_T2 / nu))
+    x_T, dx_T_dxi, w, dw_dxi = S
+    theta = x_T - np.sqrt(np.maximum(0, (1 - psi * xi) * w))
 
     dS0_dxi = dx_T_dxi  # d(x_T)/d(xi)
     dS1_dxi = Bo_l * (phi_l * theta - dx_T_dxi)  # d^2(x_T)/d(xi)^2
-    dS2_dxi = dy_T2_dxi  # d(y_T2)/d(xi)
-    term1 = (1 + 2 * psi / Bo_g) * dy_T2_dxi
-    term2 = phi_g * theta
-    dS3_dxi = (Bo_g / (1 - psi * xi)) * (term1 - term2)  # d^2(y_T2)/d(xi)^2
+    dS2_dxi = dw_dxi  # d(w)/d(xi)
+    term1 = (1 + 2 * psi / Bo_g) * dw_dxi
+    term2 = k * theta
+    dS3_dxi = (Bo_g / (1 - psi * xi)) * (term1 - term2)  # d^2(w)/d(xi)^2
 
     return np.vstack((dS0_dxi, dS1_dxi, dS2_dxi, dS3_dxi))
 
 
-def _boundary_conditions(Sa, Sb, dim, y_T2_in, BCs):
+def _boundary_conditions(Sa, Sb, dim, w_in, BCs):
     """Boundary-condition residuals at xi=0 (Sa) and xi=1 (Sb).
 
     Args:
         Sa (numpy.ndarray): State at xi=0 (liquid outlet).
         Sb (numpy.ndarray): State at xi=1 (liquid inlet).
         dim (dict): Dimensionless groups (uses Bo_l, Bo_g).
-        y_T2_in (float): Inlet mole fraction of T2 in the gas phase.
+        w_in (float): Inlet T2 mole fraction of the gas, scaled by ``nu``.
         BCs (str): Boundary-condition type, ``"C-C"`` or ``"O-C"``.
 
     Returns:
         numpy.ndarray: The four boundary-condition residuals.
-
-    Raises:
-        ValueError: If ``BCs`` is not a recognised type.
     """
     Bo_l, Bo_g = dim["Bo_l"], dim["Bo_g"]
 
     if BCs == "C-C":  # Closed-Closed
         res1 = Sa[1]  # dx_T/d(xi) = 0 at xi=0
         res2 = Sb[0] - (1 - (1 / Bo_l) * Sb[1])  # x_T(1) = 1 - ...
-        res3 = Sa[2] - y_T2_in - (1 / Bo_g) * Sa[3]  # y_T2(0) = y_T2_in + ...
-        res4 = Sb[3]  # dy_T2/d(xi) = 0 at xi=1
-    elif BCs == "O-C":  # Open-Closed
+        res3 = Sa[2] - w_in - (1 / Bo_g) * Sa[3]  # w(0) = w_in + ...
+        res4 = Sb[3]  # dw/d(xi) = 0 at xi=1
+    else:  # Open-Closed
         res1 = Sa[1]  # dx_T/d(xi) = 0 at xi=0
         res2 = Sb[0] - 1.0  # x_T(1) = 1
-        res3 = Sa[2] - y_T2_in  # y_T2(0) = y_T2_in
-        res4 = Sb[3]  # dy_T2/d(xi) = 0 at xi=1
-    else:
-        raise ValueError(f"Unknown boundary condition type: {BCs!r}")
+        res3 = Sa[2] - w_in  # w(0) = w_in
+        res4 = Sb[3]  # dw/d(xi) = 0 at xi=1
 
     return np.array([res1, res2, res3, res4])
 
 
-def _process_results(S_ends, params, phys_props, dim_params):
-    """
-    Process the BVP solution to produce dimensional results.
+def _gas_limited(params, dim, BCs):
+    """Closed-form outlet state in the gas-limited regime.
 
-    This function converts the dimensionless solution of the BVP back into
-    dimensional quantities, calculates the extraction efficiency, performs a
-    mass balance check, and aggregates all results.
+    For a large gas transfer number ``k`` the purge gas takes up little tritium
+    compared with the liquid flow. The liquid stays at its inlet concentration
+    to leading order and the gas is in equilibrium with it,
+    ``w = 1 / (1 - psi xi)``, after a jump from ``w_in`` at the gas inlet. The
+    transfer is then ``theta = w' / k``, and the linear liquid balance with this
+    source gives
+
+    ``eff = phi_l / k [(1 - w_in) W(0) + int_0^1 psi / (1 - psi s)^2 W(s) ds]``
+
+    with ``W = 1`` for C-C, where this is the tritium balance, and
+    ``W(s) = 1 - exp(-Bo_l (1 - s))`` for O-C, whose open liquid inlet passes
+    part of the transfer back out by dispersion. The efficiency goes to zero as
+    ``1/k``, i.e. linearly with ``c_T_in``. A tritium-free inlet gives zero
+    exactly.
 
     Args:
-        S_ends (numpy.ndarray): Solution sampled at the domain endpoints,
-            shape ``(4, 2)`` with column 0 at xi=0 (liquid outlet) and column 1
-            at xi=1 (liquid inlet).
+        params (dict): Input parameters including c_T_in and y_T2_in.
+        dim (dict): Dimensionless groups.
+        BCs (str): Boundary-condition type, ``"C-C"`` or ``"O-C"``.
+
+    Returns:
+        tuple, None: Extraction efficiency and the T2 mole fraction of the
+        gas outlet, or ``None`` outside the regime:
+        ``k`` below ``GLC_GAS_LIMITED_K``, or an inlet gas above equilibrium
+        with the liquid inlet, where the liquid takes up tritium and the
+        leading-order limit does not hold.
+    """
+    k, psi, nu, phi_l, Bo_l = (dim[key] for key in ("k", "psi", "nu", "phi_l", "Bo_l"))
+    y_T2_out = nu / (1 - psi)
+    if k < GLC_GAS_LIMITED_K or params["y_T2_in"] > y_T2_out:
+        return None
+    if params["c_T_in"] == 0:
+        return 0.0, 0.0
+
+    def W(s):
+        return 1.0 if BCs == "C-C" else 1 - np.exp(-Bo_l * (1 - s))
+
+    w_in = params["y_T2_in"] / nu
+    uptake = quad(lambda s: psi / (1 - psi * s) ** 2 * W(s), 0, 1)[0]
+    efficiency = phi_l / k * ((1 - w_in) * W(0.0) + uptake)
+    return efficiency, y_T2_out
+
+
+def _process_results(efficiency, y_T2_out, params, phys_props, dim_params):
+    """
+    Process the outlet state into dimensional results.
+
+    This function converts the dimensionless outlet state into dimensional
+    quantities, calculates the extraction efficiency, performs a mass balance
+    check, and aggregates all results.
+
+    Args:
+        efficiency (float): Extraction efficiency ``1 - x_T(0)``, passed as
+            such so a small efficiency keeps its digits.
+        y_T2_out (float): T2 mole fraction of the gas outlet, at xi=1.
         params (dict): The original input parameters.
         phys_props (dict): The calculated physical properties.
         dim_params (dict): The calculated dimensionless groups.
@@ -261,14 +323,10 @@ def _process_results(S_ends, params, phys_props, dim_params):
     c_T_in, P_in, T = params["c_T_in"], params["P_in"], params["T"]
     y_T2_in = params["y_T2_in"]
 
-    # Dimensionless results (xi=0 -> column 0, xi=1 -> column 1)
-    x_T_outlet_dimless = S_ends[0, 0]
     Q_l, Q_g = phys_props["Q_l"], phys_props["Q_g"]
-    y_T2_out = S_ends[2, 1]
-    efficiency = 1 - x_T_outlet_dimless
 
     # Dimensional results
-    c_T_out = x_T_outlet_dimless * c_T_in
+    c_T_out = (1 - efficiency) * c_T_in
     P_out = P_in * (1 - dim_params["psi"])
     P_T2_out = y_T2_out * P_out
     P_T2_in = y_T2_in * P_in
@@ -321,9 +379,20 @@ class GLC(BVP1D):
     entirely when the input is unchanged. After each solve the dimensionless
     endpoint solution is post-processed into the dimensional output ports.
 
+    At low inlet concentration the column is gas-limited: Sieverts' law caps
+    the T2 partial pressure the purge gas can reach, so the gas leaves in
+    equilibrium with the liquid inlet and the efficiency goes to zero linearly
+    with ``c_T_in``. There the closed-form limit replaces the solve, and a
+    tritium-free inlet gives zero tritium flows exactly.
+
+    The efficiency is ``1 - c_T_out / c_T_in``. It is negative when the purge
+    gas carries tritium into the liquid (absorption).
+
+    A NaN input is passed on as NaN outputs, an input outside its physical
+    range raises a ``ValueError``.
+
     Use :meth:`results` to retrieve the full dimensional result dictionary,
-    which additionally contains partial pressures, physical properties and the
-    dimensionless groups.
+    which additionally contains the tritium balance.
 
     Reference: https://doi.org/10.13182/FST95-A30485
 
@@ -331,7 +400,7 @@ class GLC(BVP1D):
     ``c_T_in`` -- dissolved tritium concentration in liquid inlet [mol/m³],
     ``flow_l`` -- liquid mass flow rate [kg/s],
     ``y_T2_inlet`` -- T₂ mole fraction in inlet gas [-],
-    ``flow_g`` -- gas mass flow rate [kg/s].
+    ``flow_g`` -- gas molar flow rate [mol/s].
 
     **Output ports:**
     ``c_T_out`` -- dissolved tritium concentration in liquid outlet [mol/m³],
@@ -360,12 +429,18 @@ class GLC(BVP1D):
     g : float, optional
         Gravitational acceleration [m/s²]. Default: ``scipy.constants.g``.
     initial_nb_of_elements : int, optional
-        Number of mesh elements for the initial BVP grid. Default: 20.
+        Number of equidistant mesh elements for the initial BVP grid, which is
+        refined further towards both ends of the column. Default: 20.
     tol : float, optional
         Solver tolerance for the BVP. Default: 1e-5.
     max_nodes : int, optional
         Maximum number of mesh nodes allowed during BVP refinement. Default:
         10000.
+
+    Raises
+    ------
+    ValueError
+        if a parameter is outside its valid range
     """
 
     input_port_labels: ClassVar[dict[str, int]] = {
@@ -397,6 +472,25 @@ class GLC(BVP1D):
         tol=1e-5,
         max_nodes=10000,
     ):
+        for name, value in (("P_in", P_in), ("L", L), ("D", D), ("T", T), ("g", g)):
+            if not value > 0:
+                raise ValueError(f"'{name}' must be positive but is {value}")
+        if BCs not in BC_TYPES:
+            raise ValueError(f"'BCs' must be one of {BC_TYPES} but is {BCs!r}")
+        if not tol > 0:
+            raise ValueError(f"'tol' must be positive but is {tol}")
+        if initial_nb_of_elements < 1:
+            raise ValueError(
+                f"'initial_nb_of_elements' must be at least 1 "
+                f"but is {initial_nb_of_elements}"
+            )
+        if max_nodes <= initial_nb_of_elements + 2 * GLC_MESH_EDGE_NODES:
+            raise ValueError(
+                f"'max_nodes' must exceed the initial mesh "
+                f"({initial_nb_of_elements + 1 + 2 * GLC_MESH_EDGE_NODES} nodes) "
+                f"but is {max_nodes}"
+            )
+
         # fixed operating point and geometry; the four block inputs supply the
         # per-evaluation boundary data (c_T_in, flow_l, y_T2_inlet, flow_g)
         self.params = {
@@ -417,6 +511,19 @@ class GLC(BVP1D):
         self._phys = None
         self._dim = None
 
+        # dimensional results of the most recent successful evaluation
+        self._results = None
+
+        # initial mesh graded towards the gas inlet and outlet layers, and a
+        # guess of the liquid at its inlet concentration and the gas at
+        # equilibrium with it
+        edge = np.geomspace(GLC_MESH_EDGE_SPACING, 0.1, GLC_MESH_EDGE_NODES)
+        mesh = np.unique(
+            np.concatenate(
+                (np.linspace(0.0, 1.0, initial_nb_of_elements + 1), edge, 1 - edge)
+            )
+        )
+
         # seed the native BVP block with the Malara model physics; sample the two
         # domain endpoints so the dimensionless outlet/inlet states are available
         super().__init__(
@@ -424,11 +531,27 @@ class GLC(BVP1D):
             bc=self._bc,
             n=4,
             domain=(0.0, 1.0),
-            n_nodes=initial_nb_of_elements + 1,
+            n_nodes=mesh,
             x_eval=np.array([0.0, 1.0]),
+            y0=np.array([[1.0], [0.0], [1.0], [0.0]]),
             tol=tol,
             max_nodes=max_nodes,
         )
+
+    def reset(self):
+        """Reset the BVP warm-start and the dimensional results."""
+        super().reset()
+        self._results = None
+
+    def _operating_point(self, u):
+        """Parameters merged with the boundary data of the input `u`."""
+        c_T_in, flow_l, y_T2_inlet, flow_g = u
+        p = dict(self.params)
+        p["c_T_in"] = c_T_in
+        p["flow_l"] = flow_l
+        p["flow_g"] = flow_g
+        p["y_T2_in"] = y_T2_inlet
+        return p
 
     def _physics(self, u):
         """Physical properties and dimensionless groups for the input `u`.
@@ -440,17 +563,11 @@ class GLC(BVP1D):
         if self._u_cache is not None and np.array_equal(u, self._u_cache):
             return self._phys, self._dim
 
-        c_T_in, flow_l, y_T2_inlet, flow_g = u
-        p = dict(self.params)
-        p["c_T_in"] = c_T_in
-        p["flow_l"] = flow_l
-        p["flow_g"] = flow_g
-        p["y_T2_in"] = y_T2_inlet
-
+        p = self._operating_point(u)
         phys = _calculate_properties(p)
 
         # guard against a non-physical (non-positive) gas outlet pressure
-        P_out = p["P_in"] - phys["rho_l"] * (1 - phys["epsilon_g"]) * g * p["L"]
+        P_out = p["P_in"] - phys["rho_l"] * (1 - phys["epsilon_g"]) * p["g"] * p["L"]
         if P_out <= 0:
             raise ValueError(
                 f"Calculated gas outlet pressure is non-positive ({P_out:.2e} Pa). "
@@ -471,15 +588,34 @@ class GLC(BVP1D):
     def _bc(self, Sa, Sb, p, u):
         """Malara boundary conditions, with groups derived from `u`."""
         _, dim = self._physics(u)
-        y_T2_in = max(u[2], 1e-20)
-        return _boundary_conditions(Sa, Sb, dim, y_T2_in, self.BCs)
+        w_in = max(u[2] / dim["nu"], GLC_W_IN_MIN)
+        return _boundary_conditions(Sa, Sb, dim, w_in, self.BCs)
+
+    @staticmethod
+    def _validate_input(u):
+        """Raise if the boundary data is outside its physical range."""
+        c_T_in, flow_l, y_T2_inlet, flow_g = u
+        if c_T_in < 0:
+            raise ValueError(f"'c_T_in' must be non-negative but is {c_T_in}")
+        if not flow_l > 0:
+            raise ValueError(f"'flow_l' must be positive but is {flow_l}")
+        if not 0 <= y_T2_inlet <= 1:
+            raise ValueError(f"'y_T2_inlet' must be in [0, 1] but is {y_T2_inlet}")
+        if not flow_g > 0:
+            raise ValueError(f"'flow_g' must be positive but is {flow_g}")
+        if c_T_in == 0 and y_T2_inlet > 0:
+            raise ValueError(
+                "a tritium-free liquid inlet ('c_T_in' = 0) with tritium in the "
+                "inlet gas is not supported, the model is scaled by 'c_T_in'"
+            )
 
     def update(self, t):
         """Solve the BVP and expose the dimensional results at the output ports.
 
-        Delegates the solve to :class:`~pathsim.blocks.BVP1D` (warm-started, and
-        skipped when the input is unchanged), then post-processes the
-        dimensionless endpoint solution into the eight dimensional output ports.
+        In the gas-limited regime the closed-form limit is used. Otherwise the
+        solve is delegated to :class:`~pathsim.blocks.BVP1D` (warm-started, and
+        skipped when the input is unchanged). The dimensionless outlet state is
+        post-processed into the eight dimensional output ports.
 
         Parameters
         ----------
@@ -488,14 +624,34 @@ class GLC(BVP1D):
 
         Raises
         ------
+        ValueError
+            if the input is outside its physical range
         RuntimeError
             if the BVP solve did not converge
         """
-        super().update(t)
-        if not self.success:
-            raise RuntimeError("BVP solver failed to converge.")
+        u = self.inputs.to_array()
 
-        res = self.results()
+        # an upstream NaN is passed on rather than hidden or raised
+        if np.isnan(u).any():
+            self.outputs.update_from_array(
+                np.full(len(self.output_port_labels), np.nan)
+            )
+            return
+
+        self._validate_input(u)
+        p = self._operating_point(u)
+        phys, dim = self._physics(u)
+
+        outlet = _gas_limited(p, dim, self.BCs)
+        if outlet is None:
+            super().update(t)
+            if not self.success:
+                raise RuntimeError("BVP solver failed to converge.")
+            S_ends = self.solution()
+            outlet = 1 - S_ends[0, 0], dim["nu"] * S_ends[2, 1]
+        self.success = True
+
+        self._results = res = _process_results(*outlet, p, phys, dim)
         self.outputs.update_from_array(
             np.array(
                 [
@@ -512,26 +668,13 @@ class GLC(BVP1D):
         )
 
     def results(self):
-        """Post-process the current BVP solution into dimensional results.
+        """Dimensional results of the most recent successful evaluation.
 
         Returns
         -------
         dict, None
             Dimensional results (outlet concentration, extraction efficiency,
             outlet pressure, volumetric flows, tritium molar flows and the mass
-            balance) for the most recent input, or ``None`` if no successful
-            solve has happened yet.
+            balance), or ``None`` if no successful evaluation has happened yet.
         """
-        if not self.success:
-            return None
-
-        u = self.inputs.to_array()
-        c_T_in, flow_l, y_T2_inlet, flow_g = u
-        p = dict(self.params)
-        p["c_T_in"] = c_T_in
-        p["flow_l"] = flow_l
-        p["flow_g"] = flow_g
-        p["y_T2_in"] = y_T2_inlet
-
-        phys, dim = self._physics(u)
-        return _process_results(self.solution(), p, phys, dim)
+        return self._results
