@@ -12,9 +12,9 @@ except ImportError:
     __version__ = "unknown"
 
 # Pure-Python blocks — eager.
-from .tritium import GLC, Bubbler4, IonisationChamber
+from .tritium import GLC, Bubbler4, FuelCycleComponent, IonisationChamber
 
-__all__ = ["GLC", "Bubbler4", "IonisationChamber", "__version__"]
+__all__ = ["GLC", "Bubbler4", "FuelCycleComponent", "IonisationChamber", "__version__"]
 
 # If you add blocks that depend on a native package (e.g. pybamm, jsbsim,
 # casadi, …) put them in their own submodule and re-export them defensively
