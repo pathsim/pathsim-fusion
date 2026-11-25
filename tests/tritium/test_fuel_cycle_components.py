@@ -15,15 +15,24 @@ from pathsim.blocks import Adder, Constant, Integrator, Scope, Splitter
 from pathsim.solvers import EUF, RKCK54
 
 from pathsim_fusion.tritium import (
+    AirDetritiationSystem,
     BreedingBlanket,
+    CoolantPurification,
     DetritiationSystem,
+    DirectInternalRecycling,
+    FuellingSystem,
     FusionChamberPump,
+    GasDetritiationSystem,
     HeatExchangerPermeation,
+    IsotopeAdjustmentSystem,
     IsotopeSeparationSystem,
+    Plasma,
     PlasmaFacingComponent,
+    SecondaryPump,
     StorageAndManagement,
     TokamakExhaustProcessing,
     TritiumExtractionSystem,
+    WaterDetritiationSystem,
 )
 
 # TESTS ================================================================================
@@ -32,8 +41,8 @@ from pathsim_fusion.tritium import (
 class TestSingleOutletComponents(unittest.TestCase):
     """Test the components that keep the ports of FuelCycleComponent.
 
-    BreedingBlanket, PlasmaFacingComponent, TokamakExhaustProcessing and
-    DetritiationSystem differ from the base block only in their default tau.
+    They differ from the base block only in their default tau. The components
+    without a reference value keep the default of the base block.
     """
 
     # block and its default residence time
@@ -42,6 +51,15 @@ class TestSingleOutletComponents(unittest.TestCase):
         (PlasmaFacingComponent, 1000.0),
         (TokamakExhaustProcessing, 1080.0),
         (DetritiationSystem, 3600.0),
+        (Plasma, 1.0),
+        (FuellingSystem, 1.0),
+        (DirectInternalRecycling, 1.0),
+        (IsotopeAdjustmentSystem, 1.0),
+        (SecondaryPump, 1.0),
+        (CoolantPurification, 1.0),
+        (WaterDetritiationSystem, 1.0),
+        (GasDetritiationSystem, 1.0),
+        (AirDetritiationSystem, 1.0),
     )
 
     def test_defaults(self):

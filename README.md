@@ -40,6 +40,15 @@ PathSim block interface and can be connected into simulation diagrams.
 | `FusionChamberPump` | Fusion chamber vacuum pump with direct internal recycling (outlets `recycled`, `exhaust`) | `tau`, `dir_fraction` |
 | `IsotopeSeparationSystem` | Isotope separation, residence time model with a waste fraction (outlets `product`, `waste`) | `tau`, `waste_fraction` |
 | `StorageAndManagement` | Fuel storage: accumulates its inflows, withdrawals are negative inflows, decays | `decay_constant`, `initial_value` |
+| `Plasma` | Plasma fuel holdup, residence time model | `tau` |
+| `FuellingSystem` | Fuelling system, residence time model | `tau` |
+| `DirectInternalRecycling` | Direct internal recycling loop, residence time model | `tau` |
+| `IsotopeAdjustmentSystem` | Isotope adjustment system, residence time model | `tau` |
+| `SecondaryPump` | Backing and roughing pumps, residence time model | `tau` |
+| `CoolantPurification` | Coolant purification system, residence time model | `tau` |
+| `WaterDetritiationSystem` | Water detritiation system, residence time model | `tau` |
+| `GasDetritiationSystem` | Gas detritiation system, residence time model | `tau` |
+| `AirDetritiationSystem` | Air detritiation system, residence time model | `tau` |
 
 ## Install
 
