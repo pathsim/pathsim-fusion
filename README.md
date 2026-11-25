@@ -39,6 +39,7 @@ PathSim block interface and can be connected into simulation diagrams.
 | `HeatExchangerPermeation` | Heat exchanger tritium holdup with a permeated fraction (outlets `permeated`, `returned`) | `tau`, `permeation_fraction` |
 | `FusionChamberPump` | Fusion chamber vacuum pump with direct internal recycling (outlets `recycled`, `exhaust`) | `tau`, `dir_fraction` |
 | `IsotopeSeparationSystem` | Isotope separation, residence time model with a waste fraction (outlets `product`, `waste`) | `tau`, `waste_fraction` |
+| `StorageAndManagement` | Fuel storage: accumulates its inflows, withdrawals are negative inflows, decays | `decay_constant`, `initial_value` |
 
 ## Install
 

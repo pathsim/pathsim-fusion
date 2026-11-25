@@ -8,6 +8,7 @@ from .heat_exchanger_permeation import HeatExchangerPermeation
 from .ionisation_chamber import IonisationChamber
 from .isotope_separation_system import IsotopeSeparationSystem
 from .plasma_facing_component import PlasmaFacingComponent
+from .storage_and_management import StorageAndManagement
 from .tokamak_exhaust_processing import TokamakExhaustProcessing
 from .tritium_extraction_system import TritiumExtractionSystem
 
@@ -22,6 +23,7 @@ __all__ = [
     "IonisationChamber",
     "IsotopeSeparationSystem",
     "PlasmaFacingComponent",
+    "StorageAndManagement",
     "TokamakExhaustProcessing",
     "TritiumExtractionSystem",
 ]

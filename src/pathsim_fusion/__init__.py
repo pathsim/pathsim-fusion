@@ -23,6 +23,7 @@ from .tritium import (
     IonisationChamber,
     IsotopeSeparationSystem,
     PlasmaFacingComponent,
+    StorageAndManagement,
     TokamakExhaustProcessing,
     TritiumExtractionSystem,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "IonisationChamber",
     "IsotopeSeparationSystem",
     "PlasmaFacingComponent",
+    "StorageAndManagement",
     "TokamakExhaustProcessing",
     "TritiumExtractionSystem",
     "__version__",
