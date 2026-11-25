@@ -147,3 +147,9 @@ class FuelCycleComponent(DynamicalSystem):
         outflow to several named outlets.
         """
         return (1.0,)
+
+
+def _check_fraction(name, value):
+    """Raise ValueError unless value is a fraction between 0 and 1."""
+    if not 0 <= value <= 1:
+        raise ValueError(f"'{name}' must be between 0 and 1 but is {value}")

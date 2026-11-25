@@ -18,9 +18,13 @@ from .tritium import (
     Bubbler4,
     DetritiationSystem,
     FuelCycleComponent,
+    FusionChamberPump,
+    HeatExchangerPermeation,
     IonisationChamber,
+    IsotopeSeparationSystem,
     PlasmaFacingComponent,
     TokamakExhaustProcessing,
+    TritiumExtractionSystem,
 )
 
 __all__ = [
@@ -29,9 +33,13 @@ __all__ = [
     "Bubbler4",
     "DetritiationSystem",
     "FuelCycleComponent",
+    "FusionChamberPump",
+    "HeatExchangerPermeation",
     "IonisationChamber",
+    "IsotopeSeparationSystem",
     "PlasmaFacingComponent",
     "TokamakExhaustProcessing",
+    "TritiumExtractionSystem",
     "__version__",
 ]
 
