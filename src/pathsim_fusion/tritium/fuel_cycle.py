@@ -124,13 +124,14 @@ class FuelCycleComponent(DynamicalSystem):
         def _jc_d(x, u, t):
             return -(1 + self.loss_fraction) / self.tau - self.decay_constant
 
-        # output function: inventory, outflow and loss
+        # output function: inventory, the outflow to each outlet and the loss
         def _fn_a(x, u, t):
             # the state is a plain float until a solver is set
             inventory = np.ravel(x)[0]
             outflow = inventory / self.tau
             loss = self.loss_fraction * outflow + self.decay_constant * inventory
-            return np.array([inventory, outflow, loss])
+            outlets = [f * outflow for f in self._outlet_fractions()]
+            return np.array([inventory, *outlets, loss])
 
         super().__init__(
             func_dyn=_fn_d,
@@ -138,3 +139,11 @@ class FuelCycleComponent(DynamicalSystem):
             func_alg=_fn_a,
             initial_value=initial_value,
         )
+
+    def _outlet_fractions(self):
+        """Fractions of the outflow that go to each outlet port, in port order.
+
+        The components derived from this block override it to route their
+        outflow to several named outlets.
+        """
+        return (1.0,)
