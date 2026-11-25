@@ -49,6 +49,7 @@ PathSim block interface and can be connected into simulation diagrams.
 | `WaterDetritiationSystem` | Water detritiation system, residence time model | `tau` |
 | `GasDetritiationSystem` | Gas detritiation system, residence time model | `tau` |
 | `AirDetritiationSystem` | Air detritiation system, residence time model | `tau` |
+| `Stack` | Stack: accumulates the tritium released to the environment | `decay_constant`, `initial_value` |
 
 ## Install
 

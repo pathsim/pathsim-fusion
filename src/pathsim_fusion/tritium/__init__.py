@@ -16,6 +16,7 @@ from .isotope_separation_system import IsotopeSeparationSystem
 from .plasma import Plasma
 from .plasma_facing_component import PlasmaFacingComponent
 from .secondary_pump import SecondaryPump
+from .stack import Stack
 from .storage_and_management import StorageAndManagement
 from .tokamak_exhaust_processing import TokamakExhaustProcessing
 from .tritium_extraction_system import TritiumExtractionSystem
@@ -40,6 +41,7 @@ __all__ = [
     "Plasma",
     "PlasmaFacingComponent",
     "SecondaryPump",
+    "Stack",
     "StorageAndManagement",
     "TokamakExhaustProcessing",
     "TritiumExtractionSystem",

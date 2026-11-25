@@ -29,6 +29,7 @@ from pathsim_fusion.tritium import (
     Plasma,
     PlasmaFacingComponent,
     SecondaryPump,
+    Stack,
     StorageAndManagement,
     TokamakExhaustProcessing,
     TritiumExtractionSystem,
@@ -301,6 +302,57 @@ class TestStorageAndManagement(unittest.TestCase):
         self.assertEqual(blk.outputs[1], 0.0)
 
 
+class TestStack(unittest.TestCase):
+    """Test the Stack block."""
+
+    def test_defaults(self):
+        """Default construction works, the stack has no residence time or source."""
+        blk = Stack()
+        self.assertEqual(blk.decay_constant, 0.0)
+        self.assertEqual(blk.initial_value, 0.0)
+        self.assertEqual(
+            list(Stack.info()["parameters"]), ["decay_constant", "initial_value"]
+        )
+        self.assertEqual(len(blk), 0)
+
+    def test_ports(self):
+        """Outputs are the inventory and the loss only."""
+        self.assertIsNone(Stack.input_port_labels)
+        self.assertEqual(Stack.output_port_labels, {"inventory": 0, "loss": 1})
+
+    def test_outputs_and_rate(self):
+        """The stack accumulates the inflows and loses only the decay."""
+        blk = Stack(decay_constant=0.5, initial_value=8.0)
+        blk.set_solver(EUF, parent=None)
+        blk.inputs[0] = 3.0
+        blk.update(0.0)
+        np.testing.assert_allclose(blk.outputs.to_array(), [8.0, 4.0], rtol=1e-12)
+        rate = float(blk.op_dyn(np.array([8.0]), np.array([3.0, 11.0]), 0.0)[0])
+        self.assertAlmostEqual(rate, 3.0 + 11.0 - 4.0, places=12)
+
+    def test_validation(self):
+        """Negative decay constant and initial release raise ValueError."""
+        with self.assertRaisesRegex(ValueError, "'decay_constant'"):
+            Stack(decay_constant=-1.0)
+        with self.assertRaisesRegex(ValueError, "'initial_value'"):
+            Stack(initial_value=-1.0)
+
+    def test_cumulative_release(self):
+        """Without decay the inventory is the time integral of the inflows."""
+        a, b = Constant(3.0), Constant(0.5)
+        blk = Stack(initial_value=1.0)
+        sim = Simulation(
+            [a, b, blk],
+            [Connection(a, blk[0]), Connection(b, blk[1])],
+            Solver=RKCK54,
+            dt=0.01,
+            log=False,
+        )
+        sim.run(4.0)
+        self.assertAlmostEqual(blk.outputs[0], 1.0 + 3.5 * 4.0, places=6)
+        self.assertEqual(blk.outputs[1], 0.0)
+
+
 class TestFuelCycleLoop(unittest.TestCase):
     """Test the component blocks wired into a closed fuel cycle."""
 
@@ -365,6 +417,51 @@ class TestFuelCycleLoop(unittest.TestCase):
         np.testing.assert_allclose(data.sum(axis=0), 10.0, atol=1e-6)
 
         # every component took part, and a real share was lost
+        self.assertTrue(np.all(data[:-1].max(axis=1) > 1e-3))
+        self.assertGreater(data[-1, -1], 0.5)
+
+
+class TestFuelCycleChain(unittest.TestCase):
+    """Test the single outlet components in series, ending in the stack."""
+
+    def test_conservation(self):
+        """Inventories plus integrated losses equal what the source fed in."""
+        classes = [cls for cls, _ in TestSingleOutletComponents.cases]
+        comps = [
+            cls(tau=0.3 + 0.1 * i, loss_fraction=0.1, decay_constant=0.02)
+            for i, cls in enumerate(classes)
+        ]
+        stack = Stack(decay_constant=0.02)
+        blocks = [*comps, stack]
+
+        src = Constant(2.0)
+        loss_rate, lost, sco = Adder(), Integrator(0.0), Scope()
+
+        connections = [
+            Connection(src, comps[0][0]),
+            Connection(loss_rate, lost),
+            Connection(lost, sco[len(blocks)]),
+        ]
+        for upstream, downstream in zip(comps, blocks[1:]):
+            connections.append(Connection(upstream["outflow"], downstream[0]))
+        for i, blk in enumerate(blocks):
+            connections.append(Connection(blk["inventory"], sco[i]))
+            connections.append(Connection(blk["loss"], loss_rate[i]))
+
+        sim = Simulation(
+            [*blocks, src, loss_rate, lost, sco],
+            connections,
+            Solver=RKCK54,
+            dt=0.01,
+            tolerance_lte_rel=1e-8,
+            tolerance_lte_abs=1e-10,
+            log=False,
+        )
+        sim.run(30.0)
+        time, data = sco.read()
+        np.testing.assert_allclose(data.sum(axis=0), 2.0 * time, atol=1e-5)
+
+        # the tritium reached the stack through every component
         self.assertTrue(np.all(data[:-1].max(axis=1) > 1e-3))
         self.assertGreater(data[-1, -1], 0.5)
 
