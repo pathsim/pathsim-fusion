@@ -30,6 +30,26 @@ PathSim block interface and can be connected into simulation diagrams.
 | `IonisationChamber` | Flow-through tritium ionisation chamber (signal = ε(c)·c, flux passes through) | `detection_efficiency`, `func_efficiency`, `detection_threshold` |
 | `Bubbler4` | Four-vial tritium sampling bubbler (soluble + insoluble chains, catalytic conversion, scheduled vial replacement) | `conversion_efficiency`, `vial_efficiency`, `replacement_times` |
 | `GLC` | Counter-current bubble-column gas–liquid contactor for tritium extraction from LiPb (Malara 1995, on `BVP1D`) | `P_in`, `L`, `D`, `T`, `BCs` |
+| `FuelCycleComponent` | Lumped fuel cycle component with a residence time (dI/dt = inflows + S − (1+ε)·I/τ − λ·I; outputs inventory, outflow, loss) | `tau`, `loss_fraction`, `decay_constant`, `source_term`, `initial_value` |
+| `BreedingBlanket` | Breeding blanket, residence time model (outputs inventory, outflow, loss) | `tau` |
+| `PlasmaFacingComponent` | First wall or divertor, residence time model | `tau` |
+| `TokamakExhaustProcessing` | Exhaust processing (fuel cleanup), residence time model | `tau` |
+| `DetritiationSystem` | Detritiation system, residence time model | `tau` |
+| `TritiumExtractionSystem` | Tritium extraction, residence time model with an extraction efficiency (outlets `extracted`, `residual`) | `tau`, `efficiency` |
+| `HeatExchangerPermeation` | Heat exchanger tritium holdup with a permeated fraction (outlets `permeated`, `returned`) | `tau`, `permeation_fraction` |
+| `FusionChamberPump` | Fusion chamber vacuum pump with direct internal recycling (outlets `recycled`, `exhaust`) | `tau`, `dir_fraction` |
+| `IsotopeSeparationSystem` | Isotope separation, residence time model with a waste fraction (outlets `product`, `waste`) | `tau`, `waste_fraction` |
+| `StorageAndManagement` | Fuel storage: accumulates its inflows, withdrawals are negative inflows, decays | `decay_constant`, `initial_value` |
+| `Plasma` | Plasma fuel holdup, residence time model | `tau` |
+| `FuellingSystem` | Fuelling system, residence time model | `tau` |
+| `DirectInternalRecycling` | Direct internal recycling loop, residence time model | `tau` |
+| `IsotopeAdjustmentSystem` | Isotope adjustment system, residence time model | `tau` |
+| `SecondaryPump` | Backing and roughing pumps, residence time model | `tau` |
+| `CoolantPurification` | Coolant purification system, residence time model | `tau` |
+| `WaterDetritiationSystem` | Water detritiation system, residence time model | `tau` |
+| `GasDetritiationSystem` | Gas detritiation system, residence time model | `tau` |
+| `AirDetritiationSystem` | Air detritiation system, residence time model | `tau` |
+| `Stack` | Stack: accumulates the tritium released to the environment | `decay_constant`, `initial_value` |
 
 ## Install
 
