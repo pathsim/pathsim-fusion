@@ -31,6 +31,10 @@ PathSim block interface and can be connected into simulation diagrams.
 | `Bubbler4` | Four-vial tritium sampling bubbler (soluble + insoluble chains, catalytic conversion, scheduled vial replacement) | `conversion_efficiency`, `vial_efficiency`, `replacement_times` |
 | `GLC` | Counter-current bubble-column gas–liquid contactor for tritium extraction from LiPb (Malara 1995, on `BVP1D`) | `P_in`, `L`, `D`, `T`, `BCs` |
 | `FuelCycleComponent` | Lumped fuel cycle component with a residence time (dI/dt = inflows + S − (1+ε)·I/τ − λ·I; outputs inventory, outflow, loss) | `tau`, `loss_fraction`, `decay_constant`, `source_term`, `initial_value` |
+| `BreedingBlanket` | Breeding blanket, residence time model (outputs inventory, outflow, loss) | `tau` |
+| `PlasmaFacingComponent` | First wall or divertor, residence time model | `tau` |
+| `TokamakExhaustProcessing` | Exhaust processing (fuel cleanup), residence time model | `tau` |
+| `DetritiationSystem` | Detritiation system, residence time model | `tau` |
 
 ## Install
 
