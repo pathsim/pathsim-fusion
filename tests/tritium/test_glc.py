@@ -337,6 +337,36 @@ class TestGLC(unittest.TestCase):
         with self.assertRaises(ValueError):
             blk.update(0.0)
 
+    def test_solver_failure_raises(self):
+        """A BVP solve that does not converge raises and leaves no results.
+
+        A tolerance of 1e-12 cannot be met within 100 mesh nodes, so
+        ``solve_bvp`` stops at the node limit.
+        """
+        blk = GLC(BCs="C-C", **_BASE, tol=1e-12, max_nodes=100)
+        blk.inputs.update_from_array(np.array(_INPUT))
+        with self.assertRaisesRegex(RuntimeError, "failed to converge"):
+            blk.update(0.0)
+        self.assertFalse(blk.success)
+        self.assertIsNone(blk.results())
+
+    def test_reset(self):
+        """reset() clears the results; the next update solves again to the same."""
+        blk = GLC(BCs="C-C", **_BASE)
+        blk.inputs.update_from_array(np.array(_INPUT))
+        blk.update(0.0)
+        before = blk.outputs.to_array().copy()
+
+        blk.reset()
+        self.assertIsNone(blk.results())
+        self.assertFalse(blk.success)
+
+        blk.inputs.update_from_array(np.array(_INPUT))
+        blk.update(0.0)
+        self.assertTrue(blk.success)
+        self.assertIsNotNone(blk.results())
+        np.testing.assert_allclose(blk.outputs.to_array(), before, rtol=1e-10)
+
     def test_gravity_argument(self):
         """The `g` argument sets the gravitational acceleration of the model."""
         base = {k: v for k, v in _BASE.items() if k != "g"}
