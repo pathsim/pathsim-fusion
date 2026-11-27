@@ -47,4 +47,14 @@ jobs:
         run: mypy src/pathsim_fusion
 
       - name: pytest
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -v --tb=short --cov=pathsim_fusion --cov-report=xml
+
+      # one upload is enough: the coverage does not depend on the Python version
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: pathsim/pathsim-fusion
+          files: ./coverage.xml
+          fail_ci_if_error: true

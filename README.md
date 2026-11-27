@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://pypi.org/project/pathsim-fusion/"><img src="https://img.shields.io/pypi/v/pathsim-fusion" alt="PyPI"></a>
   <img src="https://img.shields.io/github/license/pathsim/pathsim-fusion" alt="License">
+  <a href="https://codecov.io/gh/pathsim/pathsim-fusion"><img src="https://codecov.io/gh/pathsim/pathsim-fusion/branch/master/graph/badge.svg" alt="Coverage"></a>
 </p>
 
 <p align="center">
@@ -90,6 +91,7 @@ ruff check .                # lint
 ruff format .               # format
 mypy src/pathsim_fusion    # type check
 pytest tests/ -v            # run tests
+pytest tests/ --cov=pathsim_fusion --cov-report=term-missing   # tests with coverage
 ```
 
 ## License
